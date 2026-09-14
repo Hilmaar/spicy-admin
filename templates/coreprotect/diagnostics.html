@@ -1,0 +1,65 @@
+{% extends "portal/layout.html" %}
+{% block title %}Diagnostics{% endblock %}
+{% block breadcrumb %}Diagnostics{% endblock %}
+{% block content %}
+  <div class="page-heading">
+    <div>
+      <p class="eyebrow accent-text">Administration / Connections</p>
+      <h1>CoreProtect diagnostics</h1>
+      <p>Small, read-only checks of the Minecraft event database.</p>
+    </div>
+    {% include "components/status.html" with label="Admin only" tone="muted" %}
+  </div>
+  {% if diagnostic.available %}
+    <section class="card diagnostics-summary">
+      <div class="card-heading">
+        <h2>Connection established</h2>
+        {% include "components/status.html" with label="Connected" tone="good" %}
+      </div>
+      <dl>
+        <div>
+          <dt>Recorded CoreProtect version</dt>
+          <dd>
+            {{ diagnostic.version|default:'No version recorded' }}
+          </dd>
+        </div>
+        <div><dt>Material lookup · minecraft:diamond_ore</dt><dd>{% if diagnostic.material != None %}Resolved ID: {{ diagnostic.material }}{% else %}Not found{% endif %}</dd>
+        </div>
+      </dl>
+    </section>
+    <section class="card table-card">
+      <div class="card-heading">
+        <h2>Available worlds</h2>
+        <span class="small text-muted">Resolved from CoreProtect</span>
+      </div>
+      <div class="table-scroll"
+           tabindex="0"
+           role="region"
+           aria-label="Available worlds">
+        <table>
+          <caption class="sr-only">Current CoreProtect world mappings</caption>
+          <thead>
+            <tr>
+              <th scope="col">World ID</th>
+              <th scope="col">World name</th>
+            </tr>
+          </thead>
+          <tbody>{% for world in diagnostic.worlds %}<tr><td class="mono accent-text">{{ world.id }}</td><td>{{ world.name }}</td>
+            </tr>
+  {% empty %}<tr><td colspan="2">No worlds recorded.</td>
+    </tr>
+  {% endfor %}
+  </tbody>
+  </table>
+  </div>
+  </section>
+{% else %}
+  <section class="card empty-state">
+    <span class="feature-icon">{% include "components/icon.html" with name="server" %}</span>
+    <h2>Connection unavailable</h2>
+    <p>{{ diagnostic.message }}</p>
+    <a class="button secondary" href="{% url 'coreprotect:diagnostics' %}">Check again</a>
+  </section>
+{% endif %}
+<p class="small text-muted">These checks read version and mapping tables. No mining analytics or block-history scans are performed.</p>
+{% endblock %}

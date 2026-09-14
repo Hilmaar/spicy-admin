@@ -1,0 +1,14 @@
+version: "3.7"
+
+services:
+  web:
+    build:
+      context: .
+      args:
+        INSTALL_DEV: "true"
+    environment:
+      DJANGO_DEBUG: "true"
+    volumes:
+      - .:/app
+    command: ["sh", "deploy/develop.sh"]
+

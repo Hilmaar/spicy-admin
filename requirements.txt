@@ -1,0 +1,21 @@
+# Runtime dependencies, including transitive dependencies, pinned for repeatable installs.
+Django==5.2.17
+Markdown==3.10.3
+PyMySQL==1.2.0
+anyio==4.15.1
+asgiref==3.12.1
+certifi==2026.7.22
+gunicorn==25.3.0
+h11==0.16.0
+httpcore==1.0.9
+httpx==0.28.1
+idna==3.19
+nh3==0.3.7
+packaging==26.3
+psycopg==3.3.5
+psycopg-binary==3.3.5
+sqlparse==0.6.0
+typing_extensions==4.16.0
+tzdata==2026.4
+whitenoise==6.12.0
+

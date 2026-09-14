@@ -1,0 +1,55 @@
+version: "3.7"
+
+services:
+  web:
+    build: .
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      DJANGO_SETTINGS_MODULE: config.settings.base
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: "5432"
+    ports:
+      - "127.0.0.1:${WEB_PORT:-8086}:8000"
+    depends_on:
+      - postgres
+    networks:
+      - portal
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  postgres:
+    image: postgres:16.15-bookworm
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-spicy_admin}
+      POSTGRES_USER: ${POSTGRES_USER:-spicy_admin}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - portal
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U \"$$POSTGRES_USER\" -d \"$$POSTGRES_DB\""]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+networks:
+  portal:
+    driver: bridge
+
+volumes:
+  postgres_data:

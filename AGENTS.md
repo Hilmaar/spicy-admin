@@ -1,0 +1,36 @@
+# spicy-admin invariants
+
+Phase 1 is the current scope. Do not implement future scope unless explicitly asked.
+
+1. **CoreProtect is READ ONLY.** Never write data, change schema/indexes, run migrations,
+   or perform rollbacks against it. Production credentials must have SELECT-only access.
+2. Never hardcode numeric CoreProtect material IDs. Resolve names through `co_material_map`.
+3. Never hardcode numeric world IDs. Resolve names through `co_world`.
+4. Natural-mining analytics must exclude player-placed blocks, including denominator materials.
+5. Only an earlier non-rolled-back player placement of the same material at the same
+   world/x/y/z invalidates a candidate break. A later placement must not invalidate it.
+6. Rolled-back events do not count. `action=0` means break; `action=1` means placement.
+7. Discord is the access source of truth. Role IDs, never role names, grant permissions.
+8. Revalidate membership/roles server-side every 30–60 seconds; fail closed on API errors.
+9. Production uses standalone **`docker-compose` 1.25.0**, not Compose v2. Keep version 3.7
+   YAML and legacy commands. Avoid profiles, modern depends_on conditions, and newer syntax.
+10. Never alter existing Docker/Pterodactyl/Wings infrastructure, daemon configuration,
+    networks, containerd, or host package versions. Use project-owned resources only.
+11. Nginx and Certbot run on the host. No proxy/certificate containers or automated host edits.
+12. Dark mode is the default; preserve accessible light mode and responsive navigation.
+13. The primary accent is **`#00fb9a`**, with neutral dark backgrounds near `#242424`.
+14. Do not push, merge, or deploy unless the user explicitly requests it.
+
+## Structure and checks
+
+- `accounts`: OAuth and a single centralized permission service; no password backend.
+- `portal`: dashboard/layout; `documentation`: sanitized, allowlisted repository Markdown.
+- `coreprotect`: semantic repository boundary, no Django-managed external models.
+- Only PostgreSQL belongs in runtime `DATABASES`; SQLite is isolated to automated tests.
+- Never log tokens, secrets, API payloads, or OAuth callback query strings.
+- Run `python manage.py test --settings=config.settings.test`, `ruff check .`, and
+  `ruff format --check .` in the project environment. Prefer documented Docker equivalents.
+- Keep migrations synchronized using `makemigrations --check --dry-run` with test settings.
+- Keep `.env.example` and the README environment table synchronized with settings.
+- Read `docs/coreprotect.md` before changing the external-data boundary or planning analytics.
+

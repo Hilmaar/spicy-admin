@@ -1,0 +1,18 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="color-scheme" content="dark light">
+    <title>{% block title %}Staff portal{% endblock %} · spicy.is</title>
+    <script src="{% static 'js/theme.js' %}"></script>
+    <link rel="stylesheet" href="{% static 'css/portal.css' %}">
+    <link rel="icon" href="{% static 'favicon.svg' %}" type="image/svg+xml">
+    <script src="{% static 'js/portal.js' %}" defer></script>
+  </head>
+  <body>
+    <a class="skip-link" href="#main">Skip to content</a>
+    {% block layout %}{% endblock %}
+  </body>
+</html>

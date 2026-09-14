@@ -1,0 +1,68 @@
+{% extends "base.html" %}
+{% block layout %}
+  <div class="app-shell">
+    <aside class="sidebar" id="sidebar" aria-label="Portal navigation">
+      <a class="brand" href="{% url 'portal:dashboard' %}"><span class="brand-mark">s<span>.</span></span><span>spicy<span class="accent-text">.is</span><small>STAFF PORTAL</small></span></a>
+      <div class="workspace-label"><span class="status-dot"></span> Community operations</div>
+      <nav>
+        <p class="nav-label">Workspace</p>
+        <a class="nav-item {% if request.resolver_match.view_name == 'portal:dashboard' %}active{% endif %}"
+           {% if request.resolver_match.view_name == 'portal:dashboard' %}aria-current="page"{% endif %}
+           href="{% url 'portal:dashboard' %}">{% include "components/icon.html" with name="grid" %} Dashboard</a>
+        <span class="nav-item unavailable">{% include "components/icon.html" with name="diamond" %} Ore Statistics <small>Later</small></span>
+        <span class="nav-item unavailable">{% include "components/icon.html" with name="activity" %} Live Ore Activity <small>Later</small></span>
+        <span class="nav-item unavailable">{% include "components/icon.html" with name="shield" %} Bans <small>Later</small></span>
+        <p class="nav-label">Knowledge base</p>
+        <a class="nav-item {% if request.resolver_match.kwargs.slug == 'code-of-conduct' %}active{% endif %}"
+           href="{% url 'documentation:page' 'code-of-conduct' %}">{% include "components/icon.html" with name="book" %} Code of Conduct</a>
+        <a class="nav-item {% if request.resolver_match.kwargs.slug == 'admin-cheat-sheet' %}active{% endif %}"
+           href="{% url 'documentation:page' 'admin-cheat-sheet' %}">{% include "components/icon.html" with name="terminal" %} Admin Cheat Sheet</a>
+        {% if can_configure %}<p class="nav-label">Administration</p>
+        <a class="nav-item {% if request.resolver_match.app_name == 'coreprotect' %}active{% endif %}"
+           href="{% url 'coreprotect:diagnostics' %}">{% include "components/icon.html" with name="server" %} Diagnostics</a>{% endif %}
+    </nav>
+    <div class="sidebar-footer">
+      <span class="tiny-label">SPICY.IS / INTERNAL</span>
+      <p>A little order behind the world.</p>
+    </div>
+  </aside>
+  <button type="button"
+          class="menu-backdrop"
+          data-menu-close
+          aria-label="Close navigation"
+          hidden></button>
+  <div class="workspace">
+    <header class="topbar">
+      <div class="header-left"><button class="icon-button mobile-menu"
+        type="button"
+        data-menu-toggle
+        aria-controls="sidebar"
+        aria-expanded="false"
+        aria-label="Open navigation">{% include "components/icon.html" with name="menu" %}</button><span class="breadcrumb">Workspace <span>/</span> {% block breadcrumb %}Overview{% endblock %}</span>
+      </div>
+      <div class="header-actions">
+        {% include "components/theme_toggle.html" %}
+        <span class="header-divider"></span>
+        <div class="profile"><img src="{{ user.avatar_url }}"
+     width="36"
+     height="36"
+     alt=""
+     referrerpolicy="no-referrer"><span>{{ user.name }}<small>{% if can_configure %}Admin{% else %}Staff{% endif %}</small></span>
+        </div>
+        <form method="post" action="{% url 'accounts:logout' %}">
+          {% csrf_token %}
+          <button class="icon-button" title="Sign out" aria-label="Sign out">
+            {% include "components/icon.html" with name="logout" %}
+          </button>
+        </form>
+      </div>
+    </header>
+    <main id="main" class="main-content" tabindex="-1">
+      {% block content %}{% endblock %}
+    </main>
+    <footer class="page-footer">
+      <span>spicy.is <span class="text-muted">/ Staff workspace</span></span><span>Private by design.</span>
+    </footer>
+  </div>
+</div>
+{% endblock %}

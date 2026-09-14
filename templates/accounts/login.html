@@ -1,0 +1,39 @@
+{% extends "base.html" %}
+{% block title %}Sign in{% endblock %}
+{% block layout %}
+  <header class="public-header"><a class="public-brand" href="{% url 'accounts:login' %}">spicy<span class="accent-text">.is</span><span class="tiny-label">STAFF PORTAL</span></a>{% include "components/theme_toggle.html" %}</header>
+  <main id="main" class="auth-container" tabindex="-1">
+    <div class="auth-intro">
+      <p class="eyebrow accent-text">Behind the world.</p>
+      <h1>
+        A home for
+        <br>
+        the people
+        <br>
+        who keep it running<span class="accent-text">.</span>
+      </h1>
+      <p>
+        Community knowledge. Server insight.
+        <br>
+        Your spicy.is staff workspace.
+      </p>
+      <div class="auth-decoration" aria-hidden="true">{% include "components/icon.html" with name="layers" %}<span>SPICY.IS / COMMUNITY OPERATIONS</span>
+      </div>
+    </div>
+    <section class="card login-card">
+      <span class="feature-icon">{% include "components/icon.html" with name="lock" %}</span>
+      <p class="eyebrow">Private workspace</p>
+      <h2>Welcome back.</h2>
+      <p>Sign in with your Discord account to access the staff portal.</p>
+      {% if discord_configured %}<form method="post" action="{% url 'accounts:login' %}">{% csrf_token %}<button class="button primary full-width">Continue with Discord {% include "components/icon.html" with name="arrow" %}</button>
+      </form>
+{% else %}<div class="notice">Discord login is awaiting configuration by a portal owner.</div>
+{% endif %}
+<div class="login-note">{% include "components/icon.html" with name="shield" %}<p>Access is available to spicy.is Discord members with an Admin or Minecraft Overlord role.</p>
+</div>
+</section>
+</main>
+<footer class="public-footer">
+  spicy.is · A little order behind the world.
+</footer>
+{% endblock %}

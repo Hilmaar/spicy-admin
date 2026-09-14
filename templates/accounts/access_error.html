@@ -1,0 +1,18 @@
+{% extends "base.html" %}
+{% block title %}{{ title }}{% endblock %}
+{% block layout %}
+  <header class="public-header"><a class="public-brand" href="{% url 'accounts:login' %}">spicy<span class="accent-text">.is</span></a>{% include "components/theme_toggle.html" %}</header>
+  <main id="main" class="error-container" tabindex="-1">
+    <section class="card login-card">
+      <span class="feature-icon">{% include "components/icon.html" with name="shield" %}</span>
+      <p class="eyebrow">Staff workspace</p>
+      <h1>{{ title }}</h1>
+      <p>{{ message }}</p>
+      <a class="button primary" href="{% url 'accounts:login' %}">Return to sign in {% include "components/icon.html" with name="arrow" %}</a>{% if user.is_authenticated and request.path != "/auth/callback/" %}<form class="signout-form"
+      method="post"
+      action="{% url 'accounts:logout' %}">{% csrf_token %}<button class="button secondary">Sign out</button>
+      </form>
+{% endif %}
+</section>
+</main>
+{% endblock %}

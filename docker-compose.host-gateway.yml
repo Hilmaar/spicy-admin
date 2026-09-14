@@ -1,0 +1,8 @@
+# Optional Linux mapping. Engine 24 supports host-gateway; verify on the real host.
+# The base stack also works with a manually configured bridge IP in COREPROTECT_DB_HOST.
+version: "3.7"
+services:
+  web:
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+

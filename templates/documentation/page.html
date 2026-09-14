@@ -1,0 +1,15 @@
+{% extends "portal/layout.html" %}
+{% block title %}{{ title }}{% endblock %}
+{% block breadcrumb %}Knowledge base{% endblock %}
+{% block content %}
+  <div class="page-heading">
+    <div>
+      <p class="eyebrow accent-text">Knowledge base / Staff reference</p>
+      <h1>{{ title }}</h1>
+      <p>Shared knowledge, maintained by the team.</p>
+    </div>
+    {% include "components/status.html" with label="Content pending" tone="muted" %}
+  </div>
+  <div class="notice">Example page — official spicy.is operational content will be added later.</div>
+  <article class="card prose">{{ body|safe }}</article>
+{% endblock %}
