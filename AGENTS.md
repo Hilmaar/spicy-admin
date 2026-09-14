@@ -1,6 +1,7 @@
 # spicy-admin invariants
 
-Phase 1 is the current scope. Do not implement future scope unless explicitly asked.
+Phase 1 and Phase 2A (diamond counts only) are implemented. Do not implement Phase 2B
+or later scope unless explicitly asked.
 
 1. **CoreProtect is READ ONLY.** Never write data, change schema/indexes, run migrations,
    or perform rollbacks against it. Production credentials must have SELECT-only access.
@@ -8,7 +9,9 @@ Phase 1 is the current scope. Do not implement future scope unless explicitly as
 3. Never hardcode numeric world IDs. Resolve names through `co_world`.
 4. Natural-mining analytics must exclude player-placed blocks, including denominator materials.
 5. Only an earlier non-rolled-back player placement of the same material at the same
-   world/x/y/z invalidates a candidate break. A later placement must not invalidate it.
+    world/x/y/z invalidates a candidate break. A later placement must not invalidate it.
+    Use `(time, rowid)` ordering, with rowid breaking same-second ties. Search placements
+    before the reporting window too; time/world report filters apply to candidate breaks.
 6. Rolled-back events do not count. `action=0` means break; `action=1` means placement.
 7. Discord is the access source of truth. Role IDs, never role names, grant permissions.
 8. Revalidate membership/roles server-side every 30–60 seconds; fail closed on API errors.
@@ -26,6 +29,11 @@ Phase 1 is the current scope. Do not implement future scope unless explicitly as
 - `accounts`: OAuth and a single centralized permission service; no password backend.
 - `portal`: dashboard/layout; `documentation`: sanitized, allowlisted repository Markdown.
 - `coreprotect`: semantic repository boundary, no Django-managed external models.
+- `analytics`: validated UTC diamond filters, short result caching, and protected UI.
+- Centralize breaker/placer classification: non-empty non-# name and well-formed non-nil
+  UUID. Group diamond results by normalized UUID; do not assume every co_user row is a player.
+- Cache hits must never bypass `minecraft.analytics` authorization or Discord revalidation.
+- Denominator counts, ratios, other ores, workers, and event copies remain out of scope.
 - Only PostgreSQL belongs in runtime `DATABASES`; SQLite is isolated to automated tests.
 - Never log tokens, secrets, API payloads, or OAuth callback query strings.
 - Run `python manage.py test --settings=config.settings.test`, `ruff check .`, and
@@ -33,4 +41,3 @@ Phase 1 is the current scope. Do not implement future scope unless explicitly as
 - Keep migrations synchronized using `makemigrations --check --dry-run` with test settings.
 - Keep `.env.example` and the README environment table synchronized with settings.
 - Read `docs/coreprotect.md` before changing the external-data boundary or planning analytics.
-

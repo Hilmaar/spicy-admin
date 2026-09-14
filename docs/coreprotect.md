@@ -47,14 +47,16 @@ Existing indexes: primary key `(rowid)`, `(wid, x, z, time)`, `(user, time)`, an
   Meanings of actions 2 and 3 are outside current requirements; do not guess.
 - Only `rolled_back = 0` events qualify for mining analytics.
 
-### Natural mining: required future business rule
+### Natural mining: Phase 2A business rule
 
 A candidate counts only when it is a non-rolled-back break and there is **no earlier,
 non-rolled-back player placement of the same material at the same world, x, y, and z**.
 A placement after the break cannot retroactively invalidate that natural discovery.
 Do not restrict placement lookup to the selected reporting window: a placement before
-the window can still invalidate a break inside it. Same-second ordering needs explicit
-validation against production timestamps/row ordering before future analytics ships.
+the window can still invalidate a break inside it. Event order is `(time, rowid)`:
+`p.time < b.time OR (p.time = b.time AND p.rowid < b.rowid)`. This assumes CoreProtect's
+rowid reflects recording order for events in the same second. Validate that assumption
+against production examples; rowid does not override differing event timestamps.
 
 Silk Touch/Fortune example: a player finds ore, mines it with Silk Touch, places it at
 home, then breaks it with Fortune. The final break is not a second natural discovery.
@@ -66,7 +68,7 @@ not inflate the denominator of a diamond/stone ratio.
 `coreprotect/repository.py` defines the semantic protocol and MariaDB implementation:
 `check_connection()`, `get_version()`, `list_worlds()`, `resolve_world(name)`, and
 `resolve_material(name)`. A future backend can implement the protocol without changing views.
-No analytics or block-event operations exist yet.
+Phase 2A extends this protocol with `get_diamond_stats(DiamondQuery)`; see below.
 
 PyMySQL connects independently of Django. MariaDB 10.3 is not a Django database backend,
 and migrations cannot target it through application settings. Each call opens a short-lived
@@ -120,6 +122,111 @@ copy the entire block table. Target/comparison groups must use material names an
 dynamic worlds. Player pages could later reference `co_session`, `co_chat`, `co_command`,
 `co_container`, and `co_item` through semantic services.
 
-No workers, leaderboard, ratios, veins, suspicion scores, guilt judgements, live feed,
-ClickHouse, DuckDB, or CoreProtect migration are implemented in Phase 1.
+No workers, denominator ratios, other-ore analytics, veins, suspicion scores, guilt
+judgements, live feed, ClickHouse, DuckDB, or CoreProtect migration are implemented.
 
+## Phase 2A: direct diamond analytics
+
+`/ore-statistics/diamonds/` requires the existing `minecraft.analytics` permission.
+It shows diamond ore, deepslate diamond ore, and total natural breaks per player.
+Counts represent broken ore blocks, not item drops, fortune yields, or evidence of cheating.
+Only compact aggregate results are held in memory; PostgreSQL receives no CoreProtect data.
+
+### Query strategy
+
+An uncached page performs three SELECTs: world mappings, a single mapping query for both
+material names, and one aggregate query. Each repository call retains the existing
+READ ONLY transaction, session statement limit, socket timeouts, rollback, and close.
+The material lookup and aggregate use one connection/snapshot. World mappings are a
+separate small query. Session control statements are in addition to those SELECTs.
+No per-player requests, blobs, or `SELECT *` are used.
+
+The aggregate begins at `co_block b` with `b.type IN (resolved diamond IDs)`, `action=0`,
+`rolled_back=0`, and optional time/world bounds. The expected candidate access uses
+the existing `(type,time)` index. `STRAIGHT_JOIN co_user u ON u.rowid=b.user` keeps
+the rare block candidates ahead of user-record lookups. Index names are not assumed or
+hardcoded. MariaDB still selects the index; check the real plan before widening use.
+
+For each candidate, a correlated `NOT EXISTS` checks prior placements at equal wid/x/z
+(the leading columns of `(wid,x,z,time)`), `p.time <= b.time`, equal y/type, `action=1`,
+and `rolled_back=0`. The precise `(time,rowid)` predicate then determines whether the
+placement was earlier. The placer is resolved by primary-key lookup in `co_user` using
+the same real-player predicate as the breaker. There is **no lower time bound on p**.
+The extra `p.time <= b.time` is redundant logically but makes the indexed upper bound explicit.
+
+Two `SUM(CASE ...)` expressions aggregate normal and deepslate diamond counts; `COUNT(b.rowid)`
+orders by total. Results group by normalized UUID and sort by total descending, player name
+ascending, then UUID ascending. Sorting is over aggregated player rows, not all block events.
+The web view knows no SQL or CoreProtect schema. `coreprotect/mining.py` holds semantic
+types and centralized player classification; the adapter builds and executes the query.
+
+### What qualifies as a player record
+
+Both breakers and placers require a non-empty name not beginning with `#`, and a non-nil
+UUID matching 32 hex digits or the standard 8-4-4-4-12 hyphenated representation.
+Unknown user mappings, missing/malformed UUIDs, nil UUIDs, and environmental actors are
+excluded. Offline and Bedrock UUIDs are accepted without imposing a UUID version.
+This is a classification of available CoreProtect records, not verification against Mojang.
+Validate actual UUID storage and pseudo-user conventions in production before trusting counts.
+
+UUIDs normalize to lowercase without hyphens. Multiple `co_user` records for the same UUID
+produce one row; the displayed name is `MIN(u.user)` among qualifying candidate records
+under the database collation. It can be a historical name and is not claimed to be the
+latest Minecraft name. Different UUIDs sharing a name remain separate players.
+
+Both material mappings must resolve unambiguously to distinct IDs. A missing or ambiguous
+mapping produces the unavailable state rather than misleading partial or zero counts.
+
+### Time and world filters
+
+Default: all time and all worlds, with no hardcoded history start or current-time cutoff.
+Quick ranges are last 24 hours / 7 days / 30 days, measured from one UTC timestamp at query
+creation, rounded down to a whole second. Start is inclusive and end is exclusive.
+The current incomplete second is therefore omitted from quick ranges.
+Custom ranges require both bounds and start < end. ISO dates mean midnight UTC; naive
+date-times mean UTC; explicit offsets normalize to UTC. Subsecond bounds round upward
+when comparing integer event seconds, preserving the inclusive/exclusive semantics.
+The controls show UTC and the page labels the actual query bounds.
+
+World choices come from the existing `list_worlds()` method. Invalid choices are rejected
+before the aggregate runs. A newly added world becomes selectable after the mapping cache
+expires. The existing 1,000-world safety limit is retained. Bounds filter **breaks only**.
+
+### Best-effort cache and failures
+
+World mappings and successful aggregate reports use the existing LocMem cache for 45 seconds.
+This is per-process, not shared between Gunicorn workers. Concurrent misses may issue duplicate
+queries; there is no worker, Redis dependency, or distributed cache. Keys contain the time
+selection, canonical custom bounds, and world ID, hashed to a fixed length, with no secrets.
+Relative selections reuse their entry during its TTL instead of generating a new key every
+second. The report retains the original bounds and query timestamp for honest UI labels.
+
+Cache errors fall back to querying the source; DB errors propagate to a generic 503 inside
+the portal shell, with no SQL/hostnames/credentials displayed. Failed queries are not cached
+as empty reports. Successful empty reports show the distinct no-matching-events message.
+Already-cached results can remain visible until their short TTL expires. Authorization and
+Discord role revalidation happen before any analytics/cache access. Documentation never
+queries analytics. Existing CoreProtect diagnostics and dashboard status retain their behavior.
+
+### Production validation before broad use
+
+1. Run the automated suite without production credentials. Its SQL fixture tests execute the
+   actual SELECT logic on in-memory SQLite with only placeholder/STRAIGHT_JOIN translation
+   and a REGEXP shim. They validate relational behavior, **not MariaDB plans or collation**.
+2. With the SELECT-only account, verify both material mappings and real/pseudo-player UUID
+   formats. Compare known Silk Touch/Fortune events, including same-second and old placements.
+3. Use a narrow custom range and a known world first. Run a read-only `EXPLAIN` of the
+   generated aggregate and inspect candidate access via `(type,time)` and placement access
+   via `(wid,x,z,time)`, plus primary-key user lookups. No index changes are authorized.
+   In a Django shell, resolve the two names using `repo.resolve_material`, build the SQL
+   with `repo._diamond_statement(query, diamond_id, deepslate_id)`, and use `repo._cursor()`
+   to execute `cursor.execute("EXPLAIN " + sql, params)`. This internal helper is for a manual
+   reviewed plan check, not an additional public API. `EXPLAIN` does not execute the aggregate;
+   do not substitute `ANALYZE` without understanding its actual query execution.
+4. Compare factual counts against small known CoreProtect samples, then test 24h/7d/30d/all
+   and world filters within the existing timeout. A large all-time query may time out; this
+   must show unavailable, never silently truncated or partial results. Review the plan rather
+   than automatically increasing timeouts, changing schema, or adding background processing.
+5. Confirm Admin/Overlord access, Patron/member denial, role revocation even with a warm
+   cache, and continued documentation access during a CoreProtect outage. Do outage checks
+   in an isolated validation environment, not by stopping production MariaDB.

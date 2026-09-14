@@ -33,7 +33,18 @@
     <span class="text-muted small">Built for the team</span>
   </div>
   <div class="feature-grid">
-    {% include "components/empty_card.html" with icon="diamond" heading="Ore analytics" description="Ore analytics not configured yet. Mining statistics will appear here in a future release." %}
+    {% if can_view_analytics %}
+      <article class="card feature-card">
+        <div class="card-heading">
+          <span class="feature-icon">{% include "components/icon.html" with name="diamond" %}</span>
+          <span class="eyebrow">Mining statistics</span>
+        </div>
+        <h3>Diamond mining</h3>
+        <p>Natural diamond ore breaks by player, with time and world filters.</p>
+        <a class="text-link"
+           href="{% url 'analytics:diamonds' %}">View diamond statistics {% include "components/icon.html" with name="arrow" %}</a>
+      </article>
+    {% endif %}
     {% include "components/empty_card.html" with icon="activity" heading="Recent activity" description="Live ore activity is not available yet. No event feed is running." %}
     <article class="card feature-card">
       <div class="card-heading"><span class="feature-icon">{% include "components/icon.html" with name="server" %}</span><span class="eyebrow">Data source</span>

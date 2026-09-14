@@ -10,7 +10,7 @@
       <p>{{ message }}</p>
       <a class="button primary" href="{% url 'accounts:login' %}">Return to sign in {% include "components/icon.html" with name="arrow" %}</a>{% if user.is_authenticated and request.path != "/auth/callback/" %}<form class="signout-form"
       method="post"
-      action="{% url 'accounts:logout' %}">{% csrf_token %}<button class="button secondary">Sign out</button>
+      action="{% url 'accounts:logout' %}">{% csrf_token %}<button class="button secondary" type="submit">Sign out</button>
       </form>
 {% endif %}
 </section>

@@ -32,10 +32,12 @@ INSTALLED_APPS = [
     "django.contrib.contenttypes",
     "django.contrib.sessions",
     "django.contrib.staticfiles",
+    "django.contrib.humanize",
     "accounts",
     "portal",
     "documentation",
     "coreprotect",
+    "analytics",
 ]
 MIDDLEWARE = [
     "django.middleware.security.SecurityMiddleware",

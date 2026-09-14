@@ -9,7 +9,11 @@
         <a class="nav-item {% if request.resolver_match.view_name == 'portal:dashboard' %}active{% endif %}"
            {% if request.resolver_match.view_name == 'portal:dashboard' %}aria-current="page"{% endif %}
            href="{% url 'portal:dashboard' %}">{% include "components/icon.html" with name="grid" %} Dashboard</a>
-        <span class="nav-item unavailable">{% include "components/icon.html" with name="diamond" %} Ore Statistics <small>Later</small></span>
+        {% if can_view_analytics %}
+          <a class="nav-item {% if request.resolver_match.app_name == 'analytics' %}active{% endif %}"
+             {% if request.resolver_match.app_name == 'analytics' %}aria-current="page"{% endif %}
+             href="{% url 'analytics:diamonds' %}">{% include "components/icon.html" with name="diamond" %} Ore Statistics</a>
+        {% endif %}
         <span class="nav-item unavailable">{% include "components/icon.html" with name="activity" %} Live Ore Activity <small>Later</small></span>
         <span class="nav-item unavailable">{% include "components/icon.html" with name="shield" %} Bans <small>Later</small></span>
         <p class="nav-label">Knowledge base</p>
@@ -51,9 +55,10 @@
         </div>
         <form method="post" action="{% url 'accounts:logout' %}">
           {% csrf_token %}
-          <button class="icon-button" title="Sign out" aria-label="Sign out">
-            {% include "components/icon.html" with name="logout" %}
-          </button>
+          <button class="icon-button"
+                  type="submit"
+                  title="Sign out"
+                  aria-label="Sign out">{% include "components/icon.html" with name="logout" %}</button>
         </form>
       </div>
     </header>

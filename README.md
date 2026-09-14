@@ -2,7 +2,8 @@
 
 Private staff portal for **spicy.is**, intended for `https://admin.spicy.is`.
 Phase 1 includes Discord login, current-role authorization, a responsive dark/light dashboard,
-documentation placeholders, and read-only CoreProtect diagnostics. Analytics, live activity,
+documentation placeholders, and read-only CoreProtect diagnostics. Phase 2A adds natural
+diamond mining counts with time/world filters. Other ores, denominator ratios, live activity,
 player investigations, punishments, and integrations remain future scope.
 
 ## Architecture
@@ -35,6 +36,7 @@ config/                      Django settings, URLs, WSGI
 portal/                      Dashboard, security headers, DB readiness command
 documentation/               Safe Markdown rendering and tests
 coreprotect/                 Read-only adapter, diagnostics, mocked tests
+analytics/                   Diamond filters, short-lived result cache, protected page
 content/{conduct,commands,pterodactyl}/
 templates/                   Layouts, reusable components, portal pages
 static/                      CSS, theme/menu scripts, SVG icons
@@ -218,7 +220,7 @@ docker-compose -f docker-compose.yml -f docker-compose.dev.yml build web
 docker-compose -f docker-compose.yml -f docker-compose.dev.yml run --rm --no-deps web ruff check .
 docker-compose -f docker-compose.yml -f docker-compose.dev.yml run --rm --no-deps web ruff format --check .
 docker-compose -f docker-compose.yml -f docker-compose.dev.yml run --rm --no-deps web djlint templates --check
-docker-compose -f docker-compose.yml -f docker-compose.dev.yml run --rm --no-deps web coverage run --source=accounts,portal,documentation,coreprotect manage.py test --settings=config.settings.test
+docker-compose -f docker-compose.yml -f docker-compose.dev.yml run --rm --no-deps web coverage run --source=accounts,portal,documentation,coreprotect,analytics manage.py test --settings=config.settings.test
 docker-compose -f docker-compose.yml -f docker-compose.dev.yml run --rm --no-deps web coverage report
 docker-compose run --rm --no-deps web python manage.py makemigrations --check --dry-run --settings=config.settings.test
 ```
@@ -288,7 +290,33 @@ Real Discord application permissions/callbacks, PostgreSQL multi-worker locking,
 CoreProtect schema and grants, host routing, Docker startup under Compose 1.25.0, and Nginx/TLS
 need validation on a suitable host. Static schema validation does not prove runtime compatibility.
 
-Before Phase 2, complete manual integration validation and review real mapping diagnostics.
-Then scope a narrow natural-mining query using material names, validate earlier-placement
-and rollback semantics on a bounded sample, and inspect its execution plan. Do not start
-analytics, workers, or player investigations without a new scope request.
+Phase 2A is implemented; see [CoreProtect query and validation details](docs/coreprotect.md).
+See the [Phase 2A verification record](docs/phase-2a-verification.md) for local check results
+and the remaining production validation boundary.
+Before using production counts broadly, validate UUID formats, known natural/placed events,
+same-second rowid ordering, and the MariaDB execution plan on a narrow range. Phase 2B and
+later work require a new scope request.
+
+## Diamond Mining Statistics (Phase 2A)
+
+Open **Ore Statistics → Diamonds** at `/ore-statistics/diamonds/`. Admin and Minecraft
+Overlord roles receive `minecraft.analytics` through the existing permission service.
+The page shows Player / Diamond Ore / Deepslate Diamond Ore / Total, ordered by descending
+total with deterministic name/UUID ties. It does not assign suspicion or cheating scores.
+
+Default filters are **All time / All worlds**. Quick ranges are 24 hours, 7 days, and 30 days.
+Custom ranges require both bounds in UTC (start inclusive, end exclusive). Choose Custom
+range when filling the date fields. Date-only query values mean midnight; explicit offsets
+normalize to UTC. All filters apply to candidate breaks; older player placements at the
+same location/material still exclude a break. Same-second events order by rowid.
+
+Results and dynamic world choices are cached for **45 seconds per Gunicorn process** using
+LocMem. The page displays the exact bounds and timestamp of its cached query. CoreProtect
+failures produce a distinct unavailable state; valid empty reports are labelled separately.
+Authorization is always checked before cache access. No new environment variables, database
+migrations, dependencies, services, or infrastructure changes are needed for Phase 2A.
+
+The regular test command includes direct SQL semantic tests against synthetic SQLite
+fixtures; no real CoreProtect connection is required. This does not verify MariaDB query
+plans or runtime performance. Denominator counts/ratios, other ores, background aggregation,
+and PostgreSQL copies of CoreProtect events remain deliberately deferred.

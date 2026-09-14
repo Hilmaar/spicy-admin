@@ -1406,6 +1406,141 @@ tbody tr:hover {
   }
 }
 
+/* Diamond analytics: reuse portal cards/tables and keep filters keyboard-accessible. */
+.analytics-filters {
+  padding: 24px;
+  margin-bottom: 24px;
+}
+
+.analytics-filters .text-link {
+  margin-top: 0;
+}
+
+.filter-fields {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 20px;
+}
+
+.filter-field {
+  min-width: 0;
+}
+
+.filter-field label {
+  display: block;
+  font-size: 12px;
+  font-weight: 600;
+  margin-bottom: 7px;
+}
+
+.filter-field input,
+.filter-field select {
+  width: 100%;
+  min-width: 0;
+  min-height: 44px;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg);
+  color: var(--text);
+  font: inherit;
+}
+
+.filter-field input:focus-visible,
+.filter-field select:focus-visible {
+  outline: 2px solid var(--accent-text);
+  outline-offset: 2px;
+}
+
+.filter-actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 16px;
+  margin-top: 24px;
+}
+
+.filter-error,
+.errorlist {
+  color: var(--text);
+  font-size: 12px;
+}
+
+.errorlist {
+  padding-left: 18px;
+  margin-bottom: 0;
+}
+
+.analytics-context {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 16px;
+  padding: 24px;
+}
+
+.analytics-context h2 {
+  font-size: 17px;
+  overflow-wrap: anywhere;
+}
+
+.analytics-context p {
+  margin-bottom: 0;
+}
+
+.diamond-table {
+  min-width: 540px;
+}
+
+.diamond-table .number {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.diamond-table tbody th {
+  background: transparent;
+  color: var(--text);
+  font-size: 13px;
+  letter-spacing: normal;
+  text-transform: none;
+}
+
+.analytics-empty {
+  padding: 24px;
+  border-top: 1px solid var(--border);
+}
+
+.analytics-empty p {
+  margin: 16px 0 0;
+}
+
+.analytics-note {
+  line-height: 1.8;
+}
+
+@media(max-width:650px) {
+  .analytics-filters,
+  .analytics-context,
+  .analytics-empty {
+    padding: 20px;
+  }
+
+  .filter-fields {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .header-left {
+    min-width: 0;
+  }
+
+  .breadcrumb {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+}
+
 @media(prefers-reduced-motion:reduce) {
 
   *,

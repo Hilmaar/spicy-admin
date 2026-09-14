@@ -3,10 +3,13 @@
 import re
 from contextlib import closing, contextmanager
 from dataclasses import dataclass
+from math import ceil
 from typing import Protocol
 
 import pymysql
 from django.conf import settings
+
+from .mining import DIAMOND_MATERIALS, DiamondQuery, DiamondStatsRow, player_record_predicate
 
 
 class CoreProtectUnavailable(Exception):
@@ -25,6 +28,7 @@ class CoreProtectRepository(Protocol):
     def list_worlds(self) -> list[World]: ...
     def resolve_world(self, name: str) -> World | None: ...
     def resolve_material(self, name: str) -> int | None: ...
+    def get_diamond_stats(self, query: DiamondQuery) -> tuple[DiamondStatsRow, ...]: ...
 
 
 def configured():
@@ -116,6 +120,71 @@ class MariaDBCoreProtectRepository:
             )
             row = cursor.fetchone()
             return int(row[0]) if row else None
+
+    def get_diamond_stats(self, query: DiamondQuery) -> tuple[DiamondStatsRow, ...]:
+        with self._cursor() as cursor:
+            # Resolve both names together, in the same read-only snapshot as the aggregate.
+            cursor.execute(
+                f"SELECT material, id FROM `{self.prefix}material_map` WHERE material IN (%s, %s)",
+                DIAMOND_MATERIALS,
+            )
+            mappings = cursor.fetchall()
+            materials = {str(name): int(material_id) for name, material_id in mappings}
+            if (
+                len(mappings) != 2
+                or set(materials) != set(DIAMOND_MATERIALS)
+                or len(set(materials.values())) != 2
+            ):
+                # Partial counts must never look like a complete, successful empty result.
+                raise CoreProtectUnavailable("Diamond material mappings are unavailable.")
+            diamond, deepslate = (materials[name] for name in DIAMOND_MATERIALS)
+            sql, parameters = self._diamond_statement(query, diamond, deepslate)
+            cursor.execute(sql, parameters)
+            return tuple(
+                DiamondStatsRow(str(uuid), str(name), int(normal), int(deep))
+                for uuid, name, normal, deep, _total in cursor.fetchall()
+            )
+
+    def _diamond_statement(self, query, diamond, deepslate):
+        breaker_sql, breaker_params = player_record_predicate("u")
+        placer_sql, placer_params = player_record_predicate("placer")
+        constraints = ["b.type IN (%s, %s)", "b.action = 0", "b.rolled_back = 0"]
+        parameters = [diamond, deepslate, diamond, deepslate]
+        if query.start is not None:
+            constraints.append("b.time >= %s")
+            parameters.append(ceil(query.start.timestamp()))
+        if query.end is not None:
+            constraints.append("b.time < %s")
+            parameters.append(ceil(query.end.timestamp()))
+        if query.world_id is not None:
+            constraints.append("b.wid = %s")
+            parameters.append(query.world_id)
+        # b is first so (type,time) narrows rare candidates before user lookups. In the
+        # anti-lookup (wid,x,z,time) narrows placements; y/type/order finish the match.
+        # Do not add reporting-window bounds to p: older placements must still exclude.
+        sql = f"""
+            SELECT LOWER(REPLACE(u.uuid, '-', '')) AS player_uuid,
+                   MIN(u.user) AS player_name,
+                   SUM(CASE WHEN b.type = %s THEN 1 ELSE 0 END) AS diamond_ore,
+                   SUM(CASE WHEN b.type = %s THEN 1 ELSE 0 END) AS deepslate_diamond_ore,
+                   COUNT(b.rowid) AS total
+            FROM `{self.prefix}block` b
+            STRAIGHT_JOIN `{self.prefix}user` u ON u.rowid = b.user
+            WHERE {" AND ".join(constraints)}
+              AND {breaker_sql}
+              AND NOT EXISTS (
+                  SELECT 1 FROM `{self.prefix}block` p
+                  STRAIGHT_JOIN `{self.prefix}user` placer ON placer.rowid = p.user
+                  WHERE p.wid = b.wid AND p.x = b.x AND p.z = b.z
+                    AND p.time <= b.time AND p.y = b.y AND p.type = b.type
+                    AND p.action = 1 AND p.rolled_back = 0
+                    AND (p.time < b.time OR (p.time = b.time AND p.rowid < b.rowid))
+                    AND {placer_sql}
+              )
+            GROUP BY LOWER(REPLACE(u.uuid, '-', ''))
+            ORDER BY total DESC, player_name ASC, player_uuid ASC
+        """
+        return sql, tuple(parameters) + breaker_params + placer_params
 
 
 def get_repository() -> CoreProtectRepository:
