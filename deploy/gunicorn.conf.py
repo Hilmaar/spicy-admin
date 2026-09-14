@@ -7,3 +7,5 @@ errorlog = "-"
 # U is the path WITHOUT the query string. OAuth codes/state must not enter access logs.
 access_log_format = "%(m)s %(U)s %(s)s %(L)s"
 capture_output = False
+# Compose manages the process; no control socket or writable home directory is needed.
+control_socket_disable = True
