@@ -8,10 +8,10 @@ class PrivateResponseMiddleware:
         if request.path == "/auth/callback/":
             response["Referrer-Policy"] = "no-referrer"
         response["Content-Security-Policy"] = (
-            "default-src 'self'; script-src 'self'; style-src 'self'; "
-            "img-src 'self' https://cdn.discordapp.com; font-src 'self'; "
-            "connect-src 'self'; object-src 'none'; base-uri 'none'; "
-            "frame-ancestors 'none'; form-action 'self'"
-        )
+        "default-src 'self'; script-src 'self'; style-src 'self'; "
+        "img-src 'self' https://cdn.discordapp.com; font-src 'self'; "
+        "connect-src 'self'; object-src 'none'; base-uri 'none'; "
+        "frame-ancestors 'none'; form-action 'self' https://discord.com"
+    )
         response["Permissions-Policy"] = "camera=(), microphone=(), geolocation=()"
         return response
