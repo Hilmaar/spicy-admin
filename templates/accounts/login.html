@@ -25,7 +25,7 @@
       <p class="eyebrow">Private workspace</p>
       <h2>Welcome back.</h2>
       <p>Sign in with your Discord account to access the staff portal.</p>
-      {% if discord_configured %}<form method="post" action="{% url 'accounts:login' %}">{% csrf_token %}<button class="button primary full-width">Continue with Discord {% include "components/icon.html" with name="arrow" %}</button>
+      {% if discord_configured %}<form method="post" action="{% url 'accounts:login' %}">{% csrf_token %}<button type="submit" class="button primary full-width">Continue with Discord {% include "components/icon.html" with name="arrow" %}</button>
       </form>
 {% else %}<div class="notice">Discord login is awaiting configuration by a portal owner.</div>
 {% endif %}
