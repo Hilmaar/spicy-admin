@@ -203,11 +203,14 @@ class MariaDBCoreProtectRepository:
             if natural_only
             else ""
         )
+        # Production EXPLAIN favors the existing type index over wid for base blocks.
+        # Keep the natural-target query's optimizer behavior unchanged.
+        index_hint = " FORCE INDEX (`type`)" if not natural_only else ""
         sql = f"""
             SELECT LOWER(REPLACE(u.uuid, '-', '')) AS player_uuid,
                    MIN(u.user) AS player_name,
                    {columns}, COUNT(b.rowid) AS total
-            FROM `{self.prefix}block` b
+            FROM `{self.prefix}block` b{index_hint}
             STRAIGHT_JOIN `{self.prefix}user` u ON u.rowid = b.user
             WHERE {" AND ".join(constraints)}
               AND {breaker_sql}

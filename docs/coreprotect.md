@@ -213,7 +213,8 @@ queries analytics. Existing CoreProtect diagnostics and dashboard status retain 
 ### Production validation before broad use
 
 1. Run the automated suite without production credentials. Its SQL fixture tests execute the
-   actual SELECT logic on in-memory SQLite with only placeholder/STRAIGHT_JOIN translation
+   actual SELECT logic on in-memory SQLite with placeholder/STRAIGHT_JOIN translation
+   and removal of the MariaDB-only index hint
    and a REGEXP shim. They validate relational behavior, **not MariaDB plans or collation**.
 2. With the SELECT-only account, verify both material mappings and real/pseudo-player UUID
    formats. Compare known Silk Touch/Fortune events, including same-second and old placements.
@@ -264,8 +265,9 @@ and socket timeouts remain unchanged; cumulative latency includes both reads.
 
 ### Merging and ratios
 
-`merge_diamond_rows` performs a full union by lowercase UUID with hyphens removed. Players
-found only in target or denominator results remain visible; missing counts are zero.
+`merge_diamond_rows` starts with target results and attaches denominator counts by lowercase
+UUID with hyphens removed. Only players with positive qualifying natural-diamond totals
+appear. Denominator-only players never create rows; missing denominator counts are zero.
 Duplicate normalized identities are summed. Display names use the lexicographically
 smallest returned name across both sources; this may be historical. Ordering is total
 natural diamonds descending, then Python string player-name order, then UUID. Database
@@ -287,7 +289,7 @@ a muted Small sample badge and subdued ratios. It is context, not an accusation 
 High ratios or counts do not establish cheating; there are no scores or automated flags.
 
 Successful complete reports retain the 45-second per-process LocMem cache. The report-key
-version is now `diamonds:v2` to isolate the new shape. Presets, exact canonical UTC bounds,
+version is now `diamonds:v3` to isolate the corrected target-only row selection. Presets, exact canonical UTC bounds,
 and world identity remain distinct; failures are never cached as empty results. The original
 query bounds/time remain attached to each report. Authorization precedes cache access.
 
@@ -330,7 +332,8 @@ Using the existing SELECT-only account in a reviewed Django shell:
 4. Inside `with repo._cursor() as cursor`, run `cursor.execute("EXPLAIN " + sql, params)`
    and inspect `cursor.fetchall()`. Do not print credentials, query parameter values, or
    full connection settings. Expect block candidates to use `(type,time)` and user lookups
-   to use the primary key. Check actual index choices and row estimates; no index is forced.
+   to use the primary key. Confirm the denominator selects the existing `type` index,
+   forced by the query, and inspect row estimates. The natural-target query has no index hint.
 5. Compare small known samples, measure elapsed time for bounded ranges, then carefully
    test broader ranges/all-time under the existing limits. Inspect both target and base
    plans. Do not substitute `ANALYZE` for `EXPLAIN`: it executes the query.
@@ -339,3 +342,24 @@ Do not raise production timeouts automatically, add indexes, truncate reports, o
 rollups/workers to make a slow query appear successful. Benchmark before proposing a
 separately authorized Phase 2C+ approach. Other ores, alerts/scores, player pages, live
 feeds, integrations, background aggregation, and PostgreSQL copies remain deferred.
+
+
+### Focused Phase 2B production corrections
+
+For `natural_only=False`, the block table uses ``FORCE INDEX (`type`)`` (with the index
+identifier quoted in SQL). This selects the existing CoreProtect index named `type`;
+it does not create or alter an index. The hint is fixed application SQL, not user input.
+Natural target-ore queries retain their prior SQL semantics and have no index hint.
+
+The user supplied production EXPLAIN evidence for a 30-day plus world filter: choosing
+`wid` estimated 12,091,961 rows, while forcing `type` estimated 2,285,666. These are
+optimizer estimates, not measured execution times, and were not independently reproduced
+locally. Validate representative and all-time plans on production with the read-only
+procedure above. A compatible CoreProtect database must have the existing index named
+`type`; failure to use it is surfaced through the generic unavailable state.
+
+All time remains the default and intended primary admin view. The report includes only
+players with at least one qualifying natural diamond ore break in the selected range/world.
+Stone/deepslate counts still include previously placed blocks and merge by normalized UUID
+for those players. Denominator-only results produce the normal empty natural-mining state.
+No query timeouts, schema, indexes, or infrastructure were changed.

@@ -1,5 +1,31 @@
 # Phase 2B verification
 
+## Focused corrections: current verification
+
+The later Phase 2B corrections supersede the initial full-union behavior recorded below.
+Denominator queries now force the existing index named `type`; natural-target queries
+retain their previous SQL without an index hint. Report rows require a positive natural
+diamond total, with denominator counts attached by normalized UUID. Denominator-only
+players are hidden. All time remains the default and primary admin view. Report cache
+keys use `diamonds:v3` so older full-union reports cannot be reused.
+
+All **140 tests passed**, including regressions for hint placement on all-time and bounded
+world queries, unchanged target placement exclusion, normalized merging, zero-target
+exclusion, denominator-only empty reports, mixed-player visibility, and the All time default.
+Ruff lint and format checks (59 files), migration consistency, all 13 template checks,
+`git diff --check`, and production static collection passed. The existing headless browser
+suite also passed with long-table fixtures containing qualifying miners and a hidden
+denominator-only player; calendar, theme, mobile, and Phase 1 checks remain intact.
+
+The supplied production EXPLAIN estimates (12,091,961 rows using `wid`, versus 2,285,666
+with `type` forced for a 30-day/world query) motivated the hint. They were provided by
+the user, not reproduced locally, and are not elapsed-time benchmarks. The SQLite shim
+removes the MariaDB-only hint for semantic execution; tests assert its exact placement
+on the original generated SQL. No schema/index, infrastructure, or timeout changes,
+push, merge, or deployment were performed.
+
+## Initial Phase 2B verification record
+
 Verified locally on 2026-09-15. No push, merge, deployment, production database access,
 CoreProtect writes/schema changes, or host/infrastructure changes were performed.
 

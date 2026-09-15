@@ -327,7 +327,7 @@ Other ores, background aggregation, and PostgreSQL event copies remain deliberat
 Diamonds now include stone/deepslate counts, total base blocks, diamonds per 1,000 base
 blocks, base blocks per diamond, and layer-specific ratios. Diamond ores retain strict
 natural-placement exclusion. **Stone/deepslate intentionally include previously placed
-blocks** when their breaks otherwise qualify. Players from either aggregate remain visible.
+blocks** when their breaks otherwise qualify. Only players with at least one natural diamond break appear; denominator counts merge by UUID.
 Zero divisors show a dash; fewer than 1,000 base blocks receives a muted Small sample label.
 There are no cheating scores or accusation thresholds.
 
@@ -345,3 +345,7 @@ Read [the query, ratio, and EXPLAIN documentation](docs/coreprotect.md#phase-2b-
 before trusting production performance, particularly all-time denominator scans.
 See [Phase 2B verification](docs/phase-2b-verification.md) for test results and remaining
 production assumptions.
+
+Denominator queries force the existing CoreProtect `type` index, based on the supplied
+production EXPLAIN results. Natural target queries are unchanged. **All time remains the
+default and primary admin view**; no timeouts or database indexes were changed.

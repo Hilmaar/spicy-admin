@@ -15,7 +15,7 @@ from .templatetags.mining import mining_ratio
 
 
 class RatioTests(SimpleTestCase):
-    def test_full_union_and_uuid_normalization(self):
+    def test_only_target_players_with_normalized_denominator_merge(self):
         rows = merge_diamond_rows(
             (DiamondStatsRow("a" * 32, "Alice", 2, 3), DiamondStatsRow("b" * 32, "Bob", 1, 0)),
             (
@@ -28,7 +28,6 @@ class RatioTests(SimpleTestCase):
             (
                 DiamondStatsRow("a" * 32, "Alice", 2, 3, 100, 200),
                 DiamondStatsRow("b" * 32, "Bob", 1, 0, 0, 0),
-                DiamondStatsRow("c" * 32, "Carol", 0, 0, 10, 20),
             ),
         )
 
@@ -39,6 +38,15 @@ class RatioTests(SimpleTestCase):
         self.assertEqual(row.base_blocks_per_diamond, 80)
         self.assertEqual(row.stone_per_normal_diamond, 50)
         self.assertEqual(row.deepslate_per_deep_diamond, 100)
+
+    def test_zero_target_totals_never_create_visible_rows(self):
+        self.assertEqual(
+            merge_diamond_rows(
+                (DiamondStatsRow("a" * 32, "Alice", 0, 0),),
+                (MaterialBreakRow("a" * 32, "Alice", (100, 200)),),
+            ),
+            (),
+        )
 
     def test_zero_divisors_and_actual_zero_ratios(self):
         target_only = DiamondStatsRow("a" * 32, "Alice", 1, 0)
@@ -60,9 +68,13 @@ class RatioTests(SimpleTestCase):
             self.assertEqual(row.small_sample, expected)
             self.assertEqual(row.stone, count)
 
-    def test_ties_order_by_name_then_uuid_including_base_only_players(self):
+    def test_ties_order_by_name_then_uuid_for_target_players(self):
         rows = merge_diamond_rows(
-            (),
+            (
+                DiamondStatsRow("c" * 32, "Bob", 1, 0),
+                DiamondStatsRow("b" * 32, "Bob", 0, 1),
+                DiamondStatsRow("a" * 32, "Alice", 1, 0),
+            ),
             (
                 MaterialBreakRow("c" * 32, "Bob", (200, 0)),
                 MaterialBreakRow("b" * 32, "Bob", (100, 0)),
@@ -108,12 +120,12 @@ class RatioPageTests(TestCase):
         self.repo = factory.start().return_value
         self.addCleanup(factory.stop)
         self.repo.list_worlds.return_value = (World(87, "fixture"),)
-        self.repo.get_diamond_stats.return_value = ()
+        self.repo.get_diamond_stats.return_value = (DiamondStatsRow("a" * 32, "Alice", 1, 0),)
         self.repo.get_denominator_stats.return_value = (
             MaterialBreakRow("a" * 32, "Alice", (10, 0)),
         )
 
-    def test_base_only_player_visible_with_neutral_sample_and_ratios(self):
+    def test_target_player_visible_with_neutral_sample_and_ratios(self):
         response = self.client.get("/ore-statistics/diamonds/")
         for text in (
             "Alice",
@@ -121,10 +133,26 @@ class RatioPageTests(TestCase):
             "Total Base Blocks",
             "Diamonds per 1,000",
             "—",
-            "0.00",
+            "100.00",
         ):
             self.assertContains(response, text)
         self.assertNotContains(response, "No natural diamond mining events matched")
+
+    def test_denominator_only_results_show_empty_natural_mining_state(self):
+        self.repo.get_diamond_stats.return_value = ()
+        response = self.client.get("/ore-statistics/diamonds/")
+        self.assertNotContains(response, "Alice")
+        self.assertContains(response, "No natural diamond mining events matched this range.")
+        self.assertEqual(response.context["report"].query.start, None)
+        self.assertEqual(response.context["range_label"], "All time")
+
+    def test_denominator_only_player_hidden_alongside_qualifying_player(self):
+        self.repo.get_denominator_stats.return_value += (
+            MaterialBreakRow("b" * 32, "BaseOnlyBob", (1000, 2000)),
+        )
+        response = self.client.get("/ore-statistics/diamonds/")
+        self.assertContains(response, "Alice")
+        self.assertNotContains(response, "BaseOnlyBob")
 
     def test_denominator_failure_is_generic_not_partial_or_empty(self):
         self.repo.get_denominator_stats.side_effect = CoreProtectUnavailable("SQL host-secret")

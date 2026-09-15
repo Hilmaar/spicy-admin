@@ -196,7 +196,7 @@ class CacheTests(SimpleTestCase):
         with patch("analytics.services.cache.set") as store:
             get_report(self.form({"range": "7d"}))
         key, report = store.call_args.args
-        self.assertTrue(key.startswith("diamonds:v2:report:"))
+        self.assertTrue(key.startswith("diamonds:v3:report:"))
         self.assertEqual(set(vars(report)), {"query", "rows", "checked_at"})
         self.assertEqual(store.call_args.kwargs, {"timeout": 45})
 

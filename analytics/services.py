@@ -57,7 +57,7 @@ def get_report(form):
         "world": query.world_id,
     }
     digest = hashlib.sha256(json.dumps(identity, sort_keys=True).encode()).hexdigest()
-    key = f"diamonds:v2:report:{digest}"
+    key = f"diamonds:v3:report:{digest}"
     report = _get_cached(key)
     if report is None:
         repository = get_repository()
@@ -70,15 +70,21 @@ def get_report(form):
 
 
 def merge_diamond_rows(targets, denominators):
-    """Full union by normalized UUID; missing sides are zero, never missing players."""
+    """Attach base counts to natural-diamond miners by normalized UUID."""
     players = {}
     for rows, offset in ((targets, 0), (denominators, 2)):
         for row in rows:
             uuid = row.player_uuid.replace("-", "").lower()
+            if offset == 2 and uuid not in players:
+                continue
             entry = players.setdefault(uuid, [row.player_name, 0, 0, 0, 0])
             entry[0] = min(entry[0], row.player_name)
             counts = (row.diamond_ore, row.deepslate_diamond_ore) if offset == 0 else row.counts
             for i, count in enumerate(counts):
                 entry[1 + offset + i] += count
-    result = [DiamondStatsRow(uuid, *values) for uuid, values in players.items()]
+    result = [
+        DiamondStatsRow(uuid, *values)
+        for uuid, values in players.items()
+        if values[1] + values[2] > 0
+    ]
     return tuple(sorted(result, key=lambda row: (-row.total, row.player_name, row.player_uuid)))

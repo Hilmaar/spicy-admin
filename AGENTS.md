@@ -36,7 +36,10 @@ or later scope unless explicitly asked.
   UUID. Group diamond results by normalized UUID; do not assume every co_user row is a player.
 - Cache hits must never bypass `minecraft.analytics` authorization or Discord revalidation.
 - Merge target/base aggregates by normalized UUID using identical time/world query bounds;
-  cache only complete successful reports. Include players present in either aggregate.
+  cache only complete successful reports. Display only players with positive natural-diamond
+  totals; denominator-only players never create report rows.
+- Denominator queries use FORCE INDEX (`type`) on the existing CoreProtect index; natural
+  target queries retain their original index selection. All time remains the default.
 - Calendar whole-day selections send next-day midnight as exclusive end; precise times
   retain inclusive-start/exclusive-end semantics. Server validation remains authoritative.
 - Other ore pages, scores, workers, rollups, and event copies remain out of scope.

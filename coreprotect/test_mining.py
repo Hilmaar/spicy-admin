@@ -1,7 +1,8 @@
 """Execute the repository's real SELECTs on isolated synthetic records.
 
 SQLite supplies relational semantics, not MariaDB execution plans. The cursor shim only
-translates parameter markers and STRAIGHT_JOIN, and supplies MariaDB-style REGEXP matching.
+translates parameter markers and STRAIGHT_JOIN, removes the MariaDB index hint, and supplies
+MariaDB-style REGEXP matching. Hint placement is asserted separately on the original SQL.
 Connection/transaction/timeout behavior is covered separately with the actual driver mocked.
 """
 
@@ -30,7 +31,12 @@ class SQLiteReadCursor:
         self.statements.append((sql, params))
         if not sql.lstrip().startswith("SELECT"):
             raise AssertionError("Analytics issued a non-SELECT statement.")
-        return self.cursor.execute(sql.replace("%s", "?").replace("STRAIGHT_JOIN", "JOIN"), params)
+        return self.cursor.execute(
+            sql.replace("%s", "?")
+            .replace("STRAIGHT_JOIN", "JOIN")
+            .replace(" FORCE INDEX (`type`)", ""),
+            params,
+        )
 
     def fetchall(self):
         return self.cursor.fetchall()

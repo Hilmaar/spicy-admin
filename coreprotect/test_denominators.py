@@ -128,3 +128,16 @@ class DenominatorTests(MiningFixture, SimpleTestCase):
         self.event(material=self.stone)
         self.event(material=self.slate)
         self.assertEqual(self.bases(group=group)[0].counts, (1,))
+
+    def test_only_denominator_queries_force_existing_type_index(self):
+        for query in (DiamondQuery(), DiamondQuery(timestamp(10), timestamp(100), self.world)):
+            with self.subTest(query=query):
+                sql, _ = self.repository._aggregate_statement(
+                    query, (self.stone, self.slate), natural_only=False
+                )
+                self.assertIn("FROM `co_block` b FORCE INDEX (`type`)", sql)
+                self.assertEqual(sql.count("FORCE INDEX"), 1)
+                self.assertNotIn("NOT EXISTS", sql)
+                target_sql, _ = self.repository._diamond_statement(query, self.normal, self.deep)
+                self.assertNotIn("FORCE INDEX", target_sql)
+                self.assertIn("NOT EXISTS", target_sql)
