@@ -1,5 +1,5 @@
 {% extends "portal/layout.html" %}
-{% load humanize %}
+{% load humanize static mining %}
 {% block title %}Diamond Mining Statistics{% endblock %}
 {% block breadcrumb %}Ore Statistics / Diamonds{% endblock %}
 {% block content %}
@@ -7,9 +7,9 @@
     <div>
       <p class="eyebrow accent-text">Ore Statistics / Diamonds</p>
       <h1>Diamond Mining Statistics</h1>
-      <p>CoreProtect natural-break counts, grouped by Minecraft player.</p>
+      <p>Natural diamond breaks and base-block mining samples, grouped by Minecraft player.</p>
     </div>
-    {% include "components/status.html" with label="Natural breaks only" tone="muted" %}
+    {% include "components/status.html" with label="Natural diamonds / mining ratios" tone="muted" %}
   </div>
   {% if form %}
     <form method="get"
@@ -19,7 +19,7 @@
         <h2>Filter mining activity</h2>
         <a class="text-link" href="{% url 'analytics:diamonds' %}">Reset filters</a>
       </div>
-      <p id="range-help" class="small text-muted">All timestamps are UTC. Choose Custom range to use both date fields. Start is inclusive; end is exclusive.</p>
+      <p id="range-help" class="small text-muted">All timestamps are UTC. Quick presets apply directly; choose a custom range for calendar selection. Exact bounds use inclusive start and exclusive end.</p>
       {% if form.errors %}
         <div class="notice filter-error"
              role="alert">Please correct the filters below. No analytics query was run.</div>
@@ -27,19 +27,31 @@
       {{ form.non_field_errors }}
       <div class="filter-fields">
         {% for field in form %}
-          <div class="filter-field">
+          <div class="filter-field {% if field.name == 'start' or field.name == 'end' %}exact-fallback{% endif %}">
             <label for="{{ field.id_for_label }}">{{ field.label }}</label>
             {{ field }}
             {{ field.errors }}
           </div>
         {% endfor %}
       </div>
+      <div class="range-picker-control" hidden>
+        <button type="button"
+                class="button secondary"
+                data-range-open
+                aria-haspopup="dialog"
+                aria-controls="mining-range-dialog">Choose custom range</button>
+        <p class="small text-muted" data-range-summary></p>
+      </div>
+      <noscript>
+        <p class="small text-muted">For a custom range, enter UTC timestamps above. To include September 10-12 in full, use September 10 00:00 through September 13 00:00 (exclusive).</p>
+      </noscript>
       <div class="filter-actions">
         <button class="button primary"
                 type="submit">Apply filters {% include "components/icon.html" with name="arrow" %}</button>
         <span class="small text-muted">Breaks are filtered by their event time.</span>
       </div>
     </form>
+    {% include "analytics/range_picker.html" %}
   {% endif %}
   {% if unavailable %}
     <section class="card empty-state" role="status">
@@ -68,27 +80,41 @@
         </p>
       </div>
       {% if report.rows %}
-        <div class="table-scroll"
+        <div class="table-scroll statistics-scroll"
              role="region"
              aria-label="Diamond mining counts by player"
              tabindex="0">
-          <table class="diamond-table">
+          <table class="diamond-table statistics-table">
             <caption class="sr-only">Natural diamond mining counts, sorted by total descending, then player name and UUID.</caption>
             <thead>
               <tr>
                 <th scope="col">Player</th>
                 <th scope="col" class="number">Diamond Ore</th>
                 <th scope="col" class="number">Deepslate Diamond Ore</th>
-                <th scope="col" class="number" aria-sort="descending">Total</th>
+                <th scope="col" class="number" aria-sort="descending">Total Diamonds</th>
+                <th scope="col" class="number">Stone</th>
+                <th scope="col" class="number">Deepslate</th>
+                <th scope="col" class="number">Total Base Blocks</th>
+                <th scope="col" class="number">Diamonds per 1,000 Base Blocks</th>
+                <th scope="col" class="number">Base Blocks per Diamond</th>
+                <th scope="col" class="number">Stone per normal Diamond Ore</th>
+                <th scope="col" class="number">Deepslate per Deepslate Diamond Ore</th>
               </tr>
             </thead>
             <tbody>
               {% for row in report.rows %}
                 <tr>
-                  <th scope="row">{{ row.player_name }}</th>
+                  <th scope="row">{{ row.player_name }}{% if row.small_sample %}<span class="sample-badge">Small sample</span>{% endif %}</th>
                   <td class="number mono">{{ row.diamond_ore|intcomma }}</td>
                   <td class="number mono">{{ row.deepslate_diamond_ore|intcomma }}</td>
                   <td class="number mono accent-text"><strong>{{ row.total|intcomma }}</strong></td>
+                  <td class="number mono">{{ row.stone|intcomma }}</td>
+                  <td class="number mono">{{ row.deepslate|intcomma }}</td>
+                  <td class="number mono">{{ row.total_base_blocks|intcomma }}</td>
+                  <td class="number mono {% if row.small_sample %}ratio-muted{% endif %}">{{ row.diamonds_per_1000|mining_ratio }}</td>
+                  <td class="number mono {% if row.small_sample %}ratio-muted{% endif %}">{{ row.base_blocks_per_diamond|mining_ratio }}</td>
+                  <td class="number mono {% if row.small_sample %}ratio-muted{% endif %}">{{ row.stone_per_normal_diamond|mining_ratio }}</td>
+                  <td class="number mono {% if row.small_sample %}ratio-muted{% endif %}">{{ row.deepslate_per_deep_diamond|mining_ratio }}</td>
                 </tr>
               {% endfor %}
             </tbody>
@@ -103,7 +129,13 @@
     </section>
   {% endif %}
   <div class="notice analytics-note">
+    Stone and deepslate count all qualifying player breaks, including previously player-placed blocks by design.
+    Ratios use these base-block samples; fewer than {{ small_sample_threshold|intcomma }} base blocks is labelled Small sample. A dash means the divisor is zero.
+    Scroll within the table to keep column labels visible.
     Counts exclude rolled-back events and diamond ore that had previously been placed by a player at the same location.
     Each count represents an ore block broken, not the number of diamonds dropped. High counts alone do not establish cheating.
   </div>
+{% endblock %}
+{% block scripts %}
+  <script src="{% static 'js/mining-range.js' %}" defer></script>
 {% endblock %}

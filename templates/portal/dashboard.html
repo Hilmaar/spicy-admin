@@ -41,8 +41,8 @@
         </div>
         <h3>Diamond mining</h3>
         <p>Natural diamond ore breaks by player, with time and world filters.</p>
-        <a class="text-link"
-           href="{% url 'analytics:diamonds' %}">View diamond statistics {% include "components/icon.html" with name="arrow" %}</a>
+        <a class="button primary"
+           href="{% url 'analytics:diamonds' %}">Open mining statistics {% include "components/icon.html" with name="arrow" %}</a>
       </article>
     {% endif %}
     {% include "components/empty_card.html" with icon="activity" heading="Recent activity" description="Live ore activity is not available yet. No event feed is running." %}

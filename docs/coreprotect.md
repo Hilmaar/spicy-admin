@@ -60,8 +60,8 @@ against production examples; rowid does not override differing event timestamps.
 
 Silk Touch/Fortune example: a player finds ore, mines it with Silk Touch, places it at
 home, then breaks it with Fortune. The final break is not a second natural discovery.
-Apply the exclusion to comparison materials too: demolishing player-placed stone must
-not inflate the denominator of a diamond/stone ratio.
+Phase 2B deliberately does **not** apply this exclusion to stone/deepslate denominators.
+Their counts may include previously player-placed blocks. Target diamonds remain strict.
 
 ## Phase 1 implementation
 
@@ -112,8 +112,9 @@ no `COUNT(*)` or `co_block` scan in diagnostics.
 
 Rare-ore candidates can use `(type, time)`, with prior-placement checks using
 `(wid, x, z, time)` and full y/material constraints. Verify plans with narrow, bounded
-queries. Stone, deepslate, and netherrack may have millions of events: do not compute
-global denominator ratios on each request. Never fetch unused blobs.
+queries. Stone, deepslate, and netherrack may have millions of events. Phase 2B directly
+aggregates stone/deepslate with a short successful-report cache; validate performance
+before considering background aggregation. Never fetch unused blobs.
 
 Later work may use a `co_block.rowid` watermark, compact derived PostgreSQL aggregates,
 periodic processing, recent-event reconciliation, and a manual rebuild. Monotonic IDs
@@ -122,7 +123,7 @@ copy the entire block table. Target/comparison groups must use material names an
 dynamic worlds. Player pages could later reference `co_session`, `co_chat`, `co_command`,
 `co_container`, and `co_item` through semantic services.
 
-No workers, denominator ratios, other-ore analytics, veins, suspicion scores, guilt
+No workers, other-ore analytics, veins, suspicion scores, guilt
 judgements, live feed, ClickHouse, DuckDB, or CoreProtect migration are implemented.
 
 ## Phase 2A: direct diamond analytics
@@ -134,8 +135,9 @@ Only compact aggregate results are held in memory; PostgreSQL receives no CorePr
 
 ### Query strategy
 
-An uncached page performs three SELECTs: world mappings, a single mapping query for both
-material names, and one aggregate query. Each repository call retains the existing
+The Phase 2A target aggregate uses two SELECTs: both material mappings and one aggregate.
+Phase 2B adds two denominator SELECTs; with world mappings, the full uncached page uses
+five SELECTs. Each repository call retains the existing
 READ ONLY transaction, session statement limit, socket timeouts, rollback, and close.
 The material lookup and aggregate use one connection/snapshot. World mappings are a
 separate small query. Session control statements are in addition to those SELECTs.
@@ -230,3 +232,110 @@ queries analytics. Existing CoreProtect diagnostics and dashboard status retain 
 5. Confirm Admin/Overlord access, Patron/member denial, role revocation even with a warm
    cache, and continued documentation access during a CoreProtect outage. Do outage checks
    in an isolated validation environment, not by stopping production MariaDB.
+
+## Phase 2B: base-block samples, ratios, and reusable groups
+
+`OreGroup` in `coreprotect/mining.py` defines a slug, target material names, and denominator
+material names. Only `DIAMONDS` is configured. The repository's shared aggregate builder
+supports any code-defined number of materials and an explicit `natural_only` policy.
+`get_diamond_stats` preserves its semantic API; `get_denominator_stats(query, group)` uses
+the same builder without placement exclusion. Views contain no SQL. No additional ore
+pages or infrastructure are introduced.
+
+### Denominator semantics and query
+
+Resolve `minecraft:stone` and `minecraft:deepslate` together on each uncached denominator
+request. Both must map unambiguously to distinct numeric IDs. Aggregate `action=0`,
+`rolled_back=0` breaks matching those IDs, the real-player predicate, and the selected
+break-time/world bounds. Use two conditional sums grouped by normalized UUID. The only
+join is the breaker lookup in `co_user`. There is **no `NOT EXISTS`**, no placement join,
+no blob selection, no per-player query, and no row limit/truncation.
+
+Stone/deepslate breaks **may include previously player-placed blocks by design**. They
+are a mining sample, not strict natural discoveries. Diamond target ores still apply
+the full historical placement rule, including `(time,rowid)` ordering and placements
+before the reporting window. This deliberate asymmetry must not be silently changed.
+
+The service computes one `DiamondQuery` and passes it unchanged to both aggregates.
+They use separate short-lived read-only transactions, so they share filter bounds but
+not a database snapshot. Concurrent CoreProtect writes/rollback changes can be observed
+between reads. Neither result is displayed or cached if either query fails. Statement
+and socket timeouts remain unchanged; cumulative latency includes both reads.
+
+### Merging and ratios
+
+`merge_diamond_rows` performs a full union by lowercase UUID with hyphens removed. Players
+found only in target or denominator results remain visible; missing counts are zero.
+Duplicate normalized identities are summed. Display names use the lexicographically
+smallest returned name across both sources; this may be historical. Ordering is total
+natural diamonds descending, then Python string player-name order, then UUID. Database
+collation still determines each aggregate's `MIN(user)` name.
+
+| Value | Formula |
+| --- | --- |
+| Total Diamonds | diamond ore + deepslate diamond ore |
+| Total Base Blocks | stone + deepslate |
+| Diamonds per 1,000 Base Blocks | total diamonds / total base blocks × 1,000 |
+| Base Blocks per Diamond | total base blocks / total diamonds |
+| Stone per normal Diamond Ore | stone / diamond ore |
+| Deepslate per Deepslate Diamond Ore | deepslate / deepslate diamond ore |
+
+Ratios use Decimal arithmetic and display two decimal places; zero divisors show `—`.
+A valid zero ratio displays `0.00`. Raw integer counts are unchanged and never hidden.
+`SMALL_SAMPLE_BASE_BLOCKS = 1000` is the centralized code setting: totals below it receive
+a muted Small sample badge and subdued ratios. It is context, not an accusation threshold.
+High ratios or counts do not establish cheating; there are no scores or automated flags.
+
+Successful complete reports retain the 45-second per-process LocMem cache. The report-key
+version is now `diamonds:v2` to isolate the new shape. Presets, exact canonical UTC bounds,
+and world identity remain distinct; failures are never cached as empty results. The original
+query bounds/time remain attached to each report. Authorization precedes cache access.
+
+### Calendar and table behavior
+
+The locally served vanilla `mining-range.js` progressively enhances the GET form without
+dependencies, inline scripts, or CSP changes. A single modal calendar shows two months
+on desktop and one on mobile. The first click chooses start, hover previews the range,
+and the second click chooses end (reverse clicks are normalized). Apply range submits;
+clicking dates alone does not run a query. Cancel/Escape discards draft edits and restores
+focus. Arrow keys move by day/week, Home/End by week boundary, Page Up/Down by month.
+
+Selecting September 10–12 sends September 10 00:00 UTC inclusive and September 13 00:00
+UTC exclusive, including the entire final second of September 12. Adjust precise times
+reveals exact UTC timestamp text fields, explicitly labelled with exclusive end. Precise
+values, including offsets/subseconds, are passed to authoritative server validation.
+With JavaScript unavailable, labelled UTC timestamp fields remain usable; their end is
+always exclusive. Quick presets retain their existing bounds and clear custom inputs
+when selected in the enhanced UI. All time is still the default and has no fixed cutoff.
+
+The statistics table uses a bounded `65vh` region with horizontal and vertical scrolling.
+Header cells use `position: sticky; top: 0`, opaque theme backgrounds, and z-index 2.
+The portal topbar is not fixed, so no viewport-header offset is needed inside this region.
+Columns stay aligned during both scroll directions. The dashboard uses the existing green
+primary button, labelled Open mining statistics.
+
+### Read-only denominator EXPLAIN and performance validation
+
+No live MariaDB performance claim follows from the automated SQLite semantic tests.
+Stone/deepslate can comprise millions of rows. Even without placement lookups, all-time
+aggregation may exceed the existing timeout and correctly return unavailable.
+
+Using the existing SELECT-only account in a reviewed Django shell:
+
+1. Instantiate `MariaDBCoreProtectRepository` and resolve both names from
+   `DIAMONDS.denominator_materials` via `resolve_material`; stop if either is missing.
+2. Construct `DiamondQuery` with a narrow UTC range and a dynamically resolved world ID.
+3. Build `sql, params = repo._aggregate_statement(query, ids, natural_only=False)` where
+   `ids` follows the material-name order. These helpers accept internal code-defined groups.
+4. Inside `with repo._cursor() as cursor`, run `cursor.execute("EXPLAIN " + sql, params)`
+   and inspect `cursor.fetchall()`. Do not print credentials, query parameter values, or
+   full connection settings. Expect block candidates to use `(type,time)` and user lookups
+   to use the primary key. Check actual index choices and row estimates; no index is forced.
+5. Compare small known samples, measure elapsed time for bounded ranges, then carefully
+   test broader ranges/all-time under the existing limits. Inspect both target and base
+   plans. Do not substitute `ANALYZE` for `EXPLAIN`: it executes the query.
+
+Do not raise production timeouts automatically, add indexes, truncate reports, or add
+rollups/workers to make a slow query appear successful. Benchmark before proposing a
+separately authorized Phase 2C+ approach. Other ores, alerts/scores, player pages, live
+feeds, integrations, background aggregation, and PostgreSQL copies remain deferred.

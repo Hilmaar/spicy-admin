@@ -1,13 +1,15 @@
 # spicy-admin invariants
 
-Phase 1 and Phase 2A (diamond counts only) are implemented. Do not implement Phase 2B
+Phase 1, Phase 2A, and Phase 2B (diamond ratios and analytics UX) are implemented. Do not implement Phase 2C
 or later scope unless explicitly asked.
 
 1. **CoreProtect is READ ONLY.** Never write data, change schema/indexes, run migrations,
    or perform rollbacks against it. Production credentials must have SELECT-only access.
 2. Never hardcode numeric CoreProtect material IDs. Resolve names through `co_material_map`.
 3. Never hardcode numeric world IDs. Resolve names through `co_world`.
-4. Natural-mining analytics must exclude player-placed blocks, including denominator materials.
+4. Target ores must exclude player-placed blocks. Phase 2B stone/deepslate denominators
+   intentionally count all qualifying player breaks, including previously placed blocks.
+   Never add historical placement exclusion to these denominator queries.
 5. Only an earlier non-rolled-back player placement of the same material at the same
     world/x/y/z invalidates a candidate break. A later placement must not invalidate it.
     Use `(time, rowid)` ordering, with rowid breaking same-second ties. Search placements
@@ -33,7 +35,11 @@ or later scope unless explicitly asked.
 - Centralize breaker/placer classification: non-empty non-# name and well-formed non-nil
   UUID. Group diamond results by normalized UUID; do not assume every co_user row is a player.
 - Cache hits must never bypass `minecraft.analytics` authorization or Discord revalidation.
-- Denominator counts, ratios, other ores, workers, and event copies remain out of scope.
+- Merge target/base aggregates by normalized UUID using identical time/world query bounds;
+  cache only complete successful reports. Include players present in either aggregate.
+- Calendar whole-day selections send next-day midnight as exclusive end; precise times
+  retain inclusive-start/exclusive-end semantics. Server validation remains authoritative.
+- Other ore pages, scores, workers, rollups, and event copies remain out of scope.
 - Only PostgreSQL belongs in runtime `DATABASES`; SQLite is isolated to automated tests.
 - Never log tokens, secrets, API payloads, or OAuth callback query strings.
 - Run `python manage.py test --settings=config.settings.test`, `ruff check .`, and

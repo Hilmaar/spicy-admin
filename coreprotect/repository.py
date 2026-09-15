@@ -9,7 +9,14 @@ from typing import Protocol
 import pymysql
 from django.conf import settings
 
-from .mining import DIAMOND_MATERIALS, DiamondQuery, DiamondStatsRow, player_record_predicate
+from .mining import (
+    DIAMOND_MATERIALS,
+    DiamondQuery,
+    DiamondStatsRow,
+    MaterialBreakRow,
+    OreGroup,
+    player_record_predicate,
+)
 
 
 class CoreProtectUnavailable(Exception):
@@ -29,6 +36,9 @@ class CoreProtectRepository(Protocol):
     def resolve_world(self, name: str) -> World | None: ...
     def resolve_material(self, name: str) -> int | None: ...
     def get_diamond_stats(self, query: DiamondQuery) -> tuple[DiamondStatsRow, ...]: ...
+    def get_denominator_stats(
+        self, query: DiamondQuery, group: OreGroup
+    ) -> tuple[MaterialBreakRow, ...]: ...
 
 
 def configured():
@@ -122,34 +132,48 @@ class MariaDBCoreProtectRepository:
             return int(row[0]) if row else None
 
     def get_diamond_stats(self, query: DiamondQuery) -> tuple[DiamondStatsRow, ...]:
+        rows = self.get_material_stats(query, DIAMOND_MATERIALS, natural_only=True)
+        return tuple(DiamondStatsRow(row.player_uuid, row.player_name, *row.counts) for row in rows)
+
+    def get_denominator_stats(self, query: DiamondQuery, group: OreGroup):
+        return self.get_material_stats(query, group.denominator_materials, natural_only=False)
+
+    def get_material_stats(self, query, materials, *, natural_only):
+        """Reusable aggregate for a code-defined material group; never accepts SQL fragments."""
+        if not materials or len(set(materials)) != len(materials):
+            raise CoreProtectUnavailable("Invalid material group.")
         with self._cursor() as cursor:
-            # Resolve both names together, in the same read-only snapshot as the aggregate.
+            placeholders = ", ".join("%s" for _ in materials)
             cursor.execute(
-                f"SELECT material, id FROM `{self.prefix}material_map` WHERE material IN (%s, %s)",
-                DIAMOND_MATERIALS,
+                f"SELECT material, id FROM `{self.prefix}material_map` "
+                f"WHERE material IN ({placeholders})",
+                tuple(materials),
             )
             mappings = cursor.fetchall()
-            materials = {str(name): int(material_id) for name, material_id in mappings}
+            resolved = {str(name): int(identifier) for name, identifier in mappings}
             if (
-                len(mappings) != 2
-                or set(materials) != set(DIAMOND_MATERIALS)
-                or len(set(materials.values())) != 2
+                len(mappings) != len(materials)
+                or set(resolved) != set(materials)
+                or len(set(resolved.values())) != len(materials)
             ):
-                # Partial counts must never look like a complete, successful empty result.
-                raise CoreProtectUnavailable("Diamond material mappings are unavailable.")
-            diamond, deepslate = (materials[name] for name in DIAMOND_MATERIALS)
-            sql, parameters = self._diamond_statement(query, diamond, deepslate)
+                raise CoreProtectUnavailable("Material mappings are unavailable.")
+            ids = tuple(resolved[name] for name in materials)
+            sql, parameters = self._aggregate_statement(query, ids, natural_only=natural_only)
             cursor.execute(sql, parameters)
             return tuple(
-                DiamondStatsRow(str(uuid), str(name), int(normal), int(deep))
-                for uuid, name, normal, deep, _total in cursor.fetchall()
+                MaterialBreakRow(str(row[0]), str(row[1]), tuple(int(n) for n in row[2:-1]))
+                for row in cursor.fetchall()
             )
 
     def _diamond_statement(self, query, diamond, deepslate):
+        return self._aggregate_statement(query, (diamond, deepslate), natural_only=True)
+
+    def _aggregate_statement(self, query, material_ids, *, natural_only):
         breaker_sql, breaker_params = player_record_predicate("u")
         placer_sql, placer_params = player_record_predicate("placer")
-        constraints = ["b.type IN (%s, %s)", "b.action = 0", "b.rolled_back = 0"]
-        parameters = [diamond, deepslate, diamond, deepslate]
+        placeholders = ", ".join("%s" for _ in material_ids)
+        constraints = [f"b.type IN ({placeholders})", "b.action = 0", "b.rolled_back = 0"]
+        parameters = [*material_ids, *material_ids]
         if query.start is not None:
             constraints.append("b.time >= %s")
             parameters.append(ceil(query.start.timestamp()))
@@ -162,17 +186,12 @@ class MariaDBCoreProtectRepository:
         # b is first so (type,time) narrows rare candidates before user lookups. In the
         # anti-lookup (wid,x,z,time) narrows placements; y/type/order finish the match.
         # Do not add reporting-window bounds to p: older placements must still exclude.
-        sql = f"""
-            SELECT LOWER(REPLACE(u.uuid, '-', '')) AS player_uuid,
-                   MIN(u.user) AS player_name,
-                   SUM(CASE WHEN b.type = %s THEN 1 ELSE 0 END) AS diamond_ore,
-                   SUM(CASE WHEN b.type = %s THEN 1 ELSE 0 END) AS deepslate_diamond_ore,
-                   COUNT(b.rowid) AS total
-            FROM `{self.prefix}block` b
-            STRAIGHT_JOIN `{self.prefix}user` u ON u.rowid = b.user
-            WHERE {" AND ".join(constraints)}
-              AND {breaker_sql}
-              AND NOT EXISTS (
+        columns = ", ".join(
+            f"SUM(CASE WHEN b.type = %s THEN 1 ELSE 0 END) AS count_{i}"
+            for i in range(len(material_ids))
+        )
+        exclusion = (
+            f"""NOT EXISTS (
                   SELECT 1 FROM `{self.prefix}block` p
                   STRAIGHT_JOIN `{self.prefix}user` placer ON placer.rowid = p.user
                   WHERE p.wid = b.wid AND p.x = b.x AND p.z = b.z
@@ -180,11 +199,23 @@ class MariaDBCoreProtectRepository:
                     AND p.action = 1 AND p.rolled_back = 0
                     AND (p.time < b.time OR (p.time = b.time AND p.rowid < b.rowid))
                     AND {placer_sql}
-              )
+              )"""
+            if natural_only
+            else ""
+        )
+        sql = f"""
+            SELECT LOWER(REPLACE(u.uuid, '-', '')) AS player_uuid,
+                   MIN(u.user) AS player_name,
+                   {columns}, COUNT(b.rowid) AS total
+            FROM `{self.prefix}block` b
+            STRAIGHT_JOIN `{self.prefix}user` u ON u.rowid = b.user
+            WHERE {" AND ".join(constraints)}
+              AND {breaker_sql}
+              {"AND " + exclusion if natural_only else ""}
             GROUP BY LOWER(REPLACE(u.uuid, '-', ''))
             ORDER BY total DESC, player_name ASC, player_uuid ASC
         """
-        return sql, tuple(parameters) + breaker_params + placer_params
+        return sql, tuple(parameters) + breaker_params + (placer_params if natural_only else ())
 
 
 def get_repository() -> CoreProtectRepository:

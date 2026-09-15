@@ -122,6 +122,7 @@ class CacheTests(SimpleTestCase):
         self.addCleanup(self.patcher.stop)
         self.repository = self.factory.return_value
         self.repository.get_diamond_stats.return_value = ROWS
+        self.repository.get_denominator_stats.return_value = ()
         self.repository.list_worlds.return_value = list(WORLDS)
 
     def form(self, data):
@@ -195,7 +196,7 @@ class CacheTests(SimpleTestCase):
         with patch("analytics.services.cache.set") as store:
             get_report(self.form({"range": "7d"}))
         key, report = store.call_args.args
-        self.assertTrue(key.startswith("diamonds:v1:report:"))
+        self.assertTrue(key.startswith("diamonds:v2:report:"))
         self.assertEqual(set(vars(report)), {"query", "rows", "checked_at"})
         self.assertEqual(store.call_args.kwargs, {"timeout": 45})
 
@@ -235,6 +236,7 @@ class DiamondPageTests(TestCase):
         self.addCleanup(self.repo_patch.stop)
         self.repository.list_worlds.return_value = WORLDS
         self.repository.get_diamond_stats.return_value = ROWS
+        self.repository.get_denominator_stats.return_value = ()
         self.member_patch = patch(
             "accounts.permissions.fetch_membership", return_value=Membership(True, ("200",))
         )

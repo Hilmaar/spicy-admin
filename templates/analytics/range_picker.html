@@ -1,0 +1,51 @@
+<dialog id="mining-range-dialog"
+        class="range-dialog"
+        aria-labelledby="range-title"
+        aria-describedby="calendar-help">
+  <div class="card-heading">
+    <h2 id="range-title">Custom date range <span class="small text-muted">UTC</span></h2>
+    <button type="button"
+            class="icon-button"
+            data-range-cancel
+            aria-label="Close date range">×</button>
+  </div>
+  <p id="calendar-help" class="small text-muted">Choose a start date, then an end date. Both dates are included in full. Use arrow keys to move by day, Page Up/Down by month, and Enter to select.</p>
+  <div class="calendar-navigation">
+    <button type="button"
+            class="button secondary"
+            data-month-prev
+            aria-label="Previous month">←</button>
+    <span class="small" data-month-label></span>
+    <button type="button"
+            class="button secondary"
+            data-month-next
+            aria-label="Next month">→</button>
+  </div>
+  <div class="calendar-months" data-calendar></div>
+  <p class="range-selection" data-selection aria-live="polite"></p>
+  <details class="precise-times">
+    <summary>Adjust precise times (UTC)</summary>
+    <p class="small text-muted">Edit exact UTC timestamps. Start is inclusive; end is exclusive. A whole-day selection ends at midnight on the following day.</p>
+    <div class="filter-fields">
+      <div class="filter-field">
+        <label for="precise-start">Exact start (UTC)</label>
+        <input id="precise-start"
+               type="text"
+               placeholder="YYYY-MM-DDTHH:MM:SS"
+               autocomplete="off">
+      </div>
+      <div class="filter-field">
+        <label for="precise-end">Exact end (UTC, exclusive)</label>
+        <input id="precise-end"
+               type="text"
+               placeholder="YYYY-MM-DDTHH:MM:SS"
+               autocomplete="off">
+      </div>
+    </div>
+  </details>
+  <p data-range-error role="alert" class="small"></p>
+  <div class="filter-actions">
+    <button type="button" class="button primary" data-range-apply>Apply range</button>
+    <button type="button" class="button secondary" data-range-cancel>Cancel</button>
+  </div>
+</dialog>

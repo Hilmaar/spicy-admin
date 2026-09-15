@@ -36,7 +36,7 @@ class SQLiteReadCursor:
         return self.cursor.fetchall()
 
 
-class NaturalMiningTests(SimpleTestCase):
+class MiningFixture:
     # These IDs are arbitrary test fixture values, never production mapping constants.
     normal = 7619
     deep = 48027
@@ -122,6 +122,8 @@ class NaturalMiningTests(SimpleTestCase):
         with patch.object(self.repository, "_cursor", read_cursor):
             return self.repository.get_diamond_stats(query or DiamondQuery())
 
+
+class NaturalMiningTests(MiningFixture, SimpleTestCase):
     def test_natural_diamond_break(self):
         self.event()
         self.assertEqual(self.stats(), (DiamondStatsRow("a" * 32, "Alice", 1, 0),))

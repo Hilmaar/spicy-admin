@@ -1,6 +1,7 @@
 from django.shortcuts import render
 
 from accounts.permissions import permission_required
+from coreprotect.mining import SMALL_SAMPLE_BASE_BLOCKS
 from coreprotect.repository import CoreProtectUnavailable
 
 from . import services
@@ -9,7 +10,7 @@ from .forms import RANGES, DiamondFiltersForm
 
 @permission_required("minecraft.analytics")
 def diamonds(request):
-    context = {"unavailable": False}
+    context = {"unavailable": False, "small_sample_threshold": SMALL_SAMPLE_BASE_BLOCKS}
     try:
         worlds = services.list_worlds()
         form = DiamondFiltersForm(request.GET, worlds=worlds)

@@ -3,7 +3,8 @@
 Private staff portal for **spicy.is**, intended for `https://admin.spicy.is`.
 Phase 1 includes Discord login, current-role authorization, a responsive dark/light dashboard,
 documentation placeholders, and read-only CoreProtect diagnostics. Phase 2A adds natural
-diamond mining counts with time/world filters. Other ores, denominator ratios, live activity,
+diamond mining counts with time/world filters. Phase 2B adds stone/deepslate mining ratios
+and a themed date-range picker. Other ores, live activity,
 player investigations, punishments, and integrations remain future scope.
 
 ## Architecture
@@ -294,7 +295,7 @@ Phase 2A is implemented; see [CoreProtect query and validation details](docs/cor
 See the [Phase 2A verification record](docs/phase-2a-verification.md) for local check results
 and the remaining production validation boundary.
 Before using production counts broadly, validate UUID formats, known natural/placed events,
-same-second rowid ordering, and the MariaDB execution plan on a narrow range. Phase 2B and
+same-second rowid ordering, and the MariaDB execution plan on a narrow range. Phase 2C and
 later work require a new scope request.
 
 ## Diamond Mining Statistics (Phase 2A)
@@ -318,5 +319,29 @@ migrations, dependencies, services, or infrastructure changes are needed for Pha
 
 The regular test command includes direct SQL semantic tests against synthetic SQLite
 fixtures; no real CoreProtect connection is required. This does not verify MariaDB query
-plans or runtime performance. Denominator counts/ratios, other ores, background aggregation,
-and PostgreSQL copies of CoreProtect events remain deliberately deferred.
+plans or runtime performance. Phase 2B adds denominator counts/ratios as described below.
+Other ores, background aggregation, and PostgreSQL event copies remain deliberately deferred.
+
+## Mining ratios and analytics UX (Phase 2B)
+
+Diamonds now include stone/deepslate counts, total base blocks, diamonds per 1,000 base
+blocks, base blocks per diamond, and layer-specific ratios. Diamond ores retain strict
+natural-placement exclusion. **Stone/deepslate intentionally include previously placed
+blocks** when their breaks otherwise qualify. Players from either aggregate remain visible.
+Zero divisors show a dash; fewer than 1,000 base blocks receives a muted Small sample label.
+There are no cheating scores or accusation thresholds.
+
+A combined UTC calendar replaces native date/time controls when JavaScript is available.
+Select start/end dates and Apply range; the final date is included in full using next-day
+midnight as exclusive end. Expand Adjust precise times for exact timestamps. Cancel/Escape
+discards edits. Labelled text fields remain available without JavaScript. Quick presets
+are unchanged. Table headers stay visible while scrolling within the table, and the
+dashboard has an Open mining statistics primary button.
+
+The implementation adds no runtime dependencies, configuration variables, migrations, or
+infrastructure. Complete reports remain cached for 45 seconds per worker. Both aggregates
+use identical filter bounds; either failure produces the generic unavailable state.
+Read [the query, ratio, and EXPLAIN documentation](docs/coreprotect.md#phase-2b-base-block-samples-ratios-and-reusable-groups)
+before trusting production performance, particularly all-time denominator scans.
+See [Phase 2B verification](docs/phase-2b-verification.md) for test results and remaining
+production assumptions.

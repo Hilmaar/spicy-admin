@@ -2,8 +2,36 @@
 
 from dataclasses import dataclass
 from datetime import UTC, datetime
+from decimal import Decimal
 
-DIAMOND_MATERIALS = ("minecraft:diamond_ore", "minecraft:deepslate_diamond_ore")
+
+@dataclass(frozen=True)
+class OreGroup:
+    slug: str
+    target_materials: tuple[str, ...]
+    denominator_materials: tuple[str, ...]
+
+
+DIAMONDS = OreGroup(
+    "diamonds",
+    ("minecraft:diamond_ore", "minecraft:deepslate_diamond_ore"),
+    ("minecraft:stone", "minecraft:deepslate"),
+)
+DIAMOND_MATERIALS = DIAMONDS.target_materials
+SMALL_SAMPLE_BASE_BLOCKS = 1000
+
+
+@dataclass(frozen=True)
+class MaterialBreakRow:
+    player_uuid: str
+    player_name: str
+    counts: tuple[int, ...]
+
+
+def ratio(numerator, denominator):
+    return Decimal(numerator) / Decimal(denominator) if denominator else None
+
+
 PLAYER_UUID_PATTERN = (
     "^([0-9a-fA-F]{32}|"
     "[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})$"
@@ -38,10 +66,36 @@ class DiamondStatsRow:
     player_name: str
     diamond_ore: int
     deepslate_diamond_ore: int
+    stone: int = 0
+    deepslate: int = 0
 
     @property
     def total(self):
         return self.diamond_ore + self.deepslate_diamond_ore
+
+    @property
+    def total_base_blocks(self):
+        return self.stone + self.deepslate
+
+    @property
+    def diamonds_per_1000(self):
+        return ratio(self.total * 1000, self.total_base_blocks)
+
+    @property
+    def base_blocks_per_diamond(self):
+        return ratio(self.total_base_blocks, self.total)
+
+    @property
+    def stone_per_normal_diamond(self):
+        return ratio(self.stone, self.diamond_ore)
+
+    @property
+    def deepslate_per_deep_diamond(self):
+        return ratio(self.deepslate, self.deepslate_diamond_ore)
+
+    @property
+    def small_sample(self):
+        return self.total_base_blocks < SMALL_SAMPLE_BASE_BLOCKS
 
 
 def player_record_predicate(alias):

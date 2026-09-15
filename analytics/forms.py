@@ -37,8 +37,8 @@ class DiamondFiltersForm(forms.Form):
         widget=forms.DateTimeInput(
             format="%Y-%m-%dT%H:%M:%S",
             attrs={
-                "type": "datetime-local",
-                "step": "1",
+                "type": "text",
+                "placeholder": "YYYY-MM-DDTHH:MM:SS",
                 "aria-describedby": "range-help",
             },
         ),
@@ -49,8 +49,8 @@ class DiamondFiltersForm(forms.Form):
         widget=forms.DateTimeInput(
             format="%Y-%m-%dT%H:%M:%S",
             attrs={
-                "type": "datetime-local",
-                "step": "1",
+                "type": "text",
+                "placeholder": "YYYY-MM-DDTHH:MM:SS",
                 "aria-describedby": "range-help",
             },
         ),
