@@ -248,8 +248,10 @@ pages or infrastructure are introduced.
 Resolve `minecraft:stone` and `minecraft:deepslate` together on each uncached denominator
 request. Both must map unambiguously to distinct numeric IDs. Aggregate `action=0`,
 `rolled_back=0` breaks matching those IDs, the real-player predicate, and the selected
-break-time/world bounds. Use two conditional sums grouped by normalized UUID. The only
-join is the breaker lookup in `co_user`. There is **no `NOT EXISTS`**, no placement join,
+break-time/world bounds. First compute conditional sums grouped by `b.user` in a derived
+table using the existing `FORCE INDEX(type)`. Only then join those per-user totals to
+`co_user` and apply the centralized real-player predicate. The outer aggregate sums counts
+across user IDs sharing a normalized UUID and retains `MIN(user)` for the display name. There is **no `NOT EXISTS`**, no placement join,
 no blob selection, no per-player query, and no row limit/truncation.
 
 Stone/deepslate breaks **may include previously player-placed blocks by design**. They
@@ -304,8 +306,11 @@ focus. Arrow keys move by day/week, Home/End by week boundary, Page Up/Down by m
 
 Selecting September 10–12 sends September 10 00:00 UTC inclusive and September 13 00:00
 UTC exclusive, including the entire final second of September 12. Adjust precise times
-reveals exact UTC timestamp text fields, explicitly labelled with exclusive end. Precise
-values, including offsets/subseconds, are passed to authoritative server validation.
+reveals human-readable Start time / End time controls opening a themed radial clock.
+Whole-day end displays 23:59 with an end-of-day label but still sends next-day midnight.
+An explicitly chosen end time is exclusive on the selected final date. Use end of day
+restores the full final date. Start is inclusive. Clock edits use minute precision;
+existing seconds, offsets, and subseconds remain unchanged unless that bound is edited.
 With JavaScript unavailable, labelled UTC timestamp fields remain usable; their end is
 always exclusive. Quick presets retain their existing bounds and clear custom inputs
 when selected in the enhanced UI. All time is still the default and has no fixed cutoff.
@@ -363,3 +368,46 @@ players with at least one qualifying natural diamond ore break in the selected r
 Stone/deepslate counts still include previously placed blocks and merge by normalized UUID
 for those players. Denominator-only results produce the normal empty natural-mining state.
 No query timeouts, schema, indexes, or infrastructure were changed.
+
+
+### Denominator derived-table optimization
+
+The existing index hint alone still exceeded the 3-second limit for All Time and 30-day
+requests according to the user. Denominator SQL now has two aggregation stages:
+
+1. The inner SELECT scans only dynamically resolved base material IDs, with `action=0`,
+   `rolled_back=0`, and selected time/world bounds. It uses the existing `type` index and
+   groups conditional material sums by numeric `b.user`, without any user join or UUID check.
+2. The outer SELECT joins the reduced totals to `co_user`, applies the centralized name/UUID
+   rule, and sums them by normalized UUID so historical duplicate user IDs remain one player.
+
+Both GROUP BY stages use `ORDER BY NULL` to suppress MariaDB's implicit group ordering.
+There is no denominator `COUNT`, computed total, ranking sort, limit, or placement lookup.
+`MaterialBreakRow.counts` contains just the ordered material counts. The service still merges
+by normalized UUID, filters to natural-diamond miners, and performs the final deterministic
+report ordering. Target-ore SQL, five uncached SELECTs, cache identity/TTL, All Time default,
+read-only transactions, and statement/socket timeouts remain unchanged.
+
+Use the existing `_aggregate_statement(..., natural_only=False)` EXPLAIN procedure above.
+Inspect the inner derived-table scan using `type`, grouping/materialization cost, and the
+outer primary-key user lookup. Confirm the join/classification applies to per-user totals,
+not individual events. Compare known counts including duplicate UUID records and measure
+All Time/30-day latency on production MariaDB. Local SQLite tests establish semantics and
+SQL shape, not MariaDB materialization behavior or a guarantee of completion in 3 seconds.
+No PostgreSQL aggregates, workers, indexes, schema changes, or timeout increases are added.
+
+### Radial clock interaction
+
+The locally served `mining-clock.js` is dependency-free and keeps existing CSP unchanged.
+Its 24-hour face puts 1-12 on the outer ring and 13-23/00 on the inner ring. Choosing an
+hour switches to minutes; every minute is selectable, with five-minute labels and a hand.
+Mouse/touch taps select a dial position. The keyboard slider supports arrows, Home/End,
+and Enter; hour/minute readout buttons switch faces. Both themes use portal colors.
+
+Use time commits only to the calendar draft. Cancel/Escape leaves the prior time unchanged
+and returns focus. Calendar Cancel discards committed clock drafts too. Only Apply range
+submits analytics. The UI describes an explicit end as exclusive; choosing 23:59 explicitly
+means 23:59:00 exclusive, while the separate End of day state includes the entire last minute.
+The main GET form retains labelled plain timestamp inputs without JavaScript (or if clock
+initialization is unavailable). ISO values remain internal to the enhanced picker, not its
+normal displayed controls. Server validation remains authoritative.

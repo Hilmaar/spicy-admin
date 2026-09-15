@@ -168,11 +168,16 @@ class RatioPageTests(TestCase):
             "statistics-table",
             'aria-labelledby="range-title"',
             "Choose custom range",
-            "Exact end (UTC, exclusive)",
+            "End time (UTC)",
             "mining-range.js",
+            "mining-clock.js",
+            'aria-labelledby="clock-title"',
+            'role="slider"',
         ):
             self.assertContains(response, text)
         self.assertNotContains(response, 'type="datetime-local"')
+        self.assertContains(response, '<input id="precise-start" type="hidden">', html=True)
+        self.assertContains(response, '<input id="precise-end" type="hidden">', html=True)
         dashboard = self.client.get("/")
         self.assertContains(
             dashboard, 'class="button primary"\n           href="/ore-statistics/diamonds/"'

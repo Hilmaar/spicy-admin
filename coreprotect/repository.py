@@ -161,7 +161,11 @@ class MariaDBCoreProtectRepository:
             sql, parameters = self._aggregate_statement(query, ids, natural_only=natural_only)
             cursor.execute(sql, parameters)
             return tuple(
-                MaterialBreakRow(str(row[0]), str(row[1]), tuple(int(n) for n in row[2:-1]))
+                MaterialBreakRow(
+                    str(row[0]),
+                    str(row[1]),
+                    tuple(int(n) for n in (row[2:-1] if natural_only else row[2:])),
+                )
                 for row in cursor.fetchall()
             )
 
@@ -190,6 +194,28 @@ class MariaDBCoreProtectRepository:
             f"SUM(CASE WHEN b.type = %s THEN 1 ELSE 0 END) AS count_{i}"
             for i in range(len(material_ids))
         )
+        if not natural_only:
+            # Reduce millions of events to user-ID totals before any player lookups.
+            # The outer aggregate combines historical user IDs sharing a normalized UUID.
+            totals = ", ".join(
+                f"SUM(base.count_{i}) AS count_{i}" for i in range(len(material_ids))
+            )
+            sql = f"""
+                SELECT LOWER(REPLACE(u.uuid, '-', '')) AS player_uuid,
+                       MIN(u.user) AS player_name, {totals}
+                FROM (
+                    SELECT b.user, {columns}
+                    FROM `{self.prefix}block` b FORCE INDEX (`type`)
+                    WHERE {" AND ".join(constraints)}
+                    GROUP BY b.user
+                    ORDER BY NULL
+                ) base
+                STRAIGHT_JOIN `{self.prefix}user` u ON u.rowid = base.user
+                WHERE {breaker_sql}
+                GROUP BY LOWER(REPLACE(u.uuid, '-', ''))
+                ORDER BY NULL
+            """
+            return sql, tuple(parameters) + breaker_params
         exclusion = (
             f"""NOT EXISTS (
                   SELECT 1 FROM `{self.prefix}block` p

@@ -25,21 +25,29 @@
   <p class="range-selection" data-selection aria-live="polite"></p>
   <details class="precise-times">
     <summary>Adjust precise times (UTC)</summary>
-    <p class="small text-muted">Edit exact UTC timestamps. Start is inclusive; end is exclusive. A whole-day selection ends at midnight on the following day.</p>
+    <p class="small text-muted">Start is inclusive; a chosen end time is exclusive. End of day includes the full final date. Times are UTC.</p>
+    <input id="precise-start" type="hidden">
+    <input id="precise-end" type="hidden">
     <div class="filter-fields">
       <div class="filter-field">
-        <label for="precise-start">Exact start (UTC)</label>
-        <input id="precise-start"
-               type="text"
-               placeholder="YYYY-MM-DDTHH:MM:SS"
-               autocomplete="off">
+        <span id="start-time-label">Start time (UTC)</span>
+        <button type="button"
+                class="button secondary time-control"
+                data-time-start
+                aria-labelledby="start-time-label start-time-value"
+                aria-haspopup="dialog"
+                aria-controls="mining-clock-dialog"><span id="start-time-value">00:00</span></button>
       </div>
       <div class="filter-field">
-        <label for="precise-end">Exact end (UTC, exclusive)</label>
-        <input id="precise-end"
-               type="text"
-               placeholder="YYYY-MM-DDTHH:MM:SS"
-               autocomplete="off">
+        <span id="end-time-label">End time (UTC)</span>
+        <button type="button"
+                class="button secondary time-control"
+                data-time-end
+                aria-labelledby="end-time-label end-time-value"
+                aria-haspopup="dialog"
+                aria-controls="mining-clock-dialog"><span id="end-time-value">23:59</span></button>
+        <p class="small text-muted" data-end-time-note>End of day (includes the entire final date)</p>
+        <button type="button" class="text-link" data-end-whole>Use end of day</button>
       </div>
     </div>
   </details>
@@ -47,5 +55,34 @@
   <div class="filter-actions">
     <button type="button" class="button primary" data-range-apply>Apply range</button>
     <button type="button" class="button secondary" data-range-cancel>Cancel</button>
+  </div>
+</dialog>
+<dialog id="mining-clock-dialog"
+        class="clock-dialog"
+        aria-labelledby="clock-title"
+        aria-describedby="clock-help">
+  <h2 id="clock-title">Choose time <span class="small text-muted">UTC</span></h2>
+  <div class="clock-readout">
+    <button type="button" data-clock-hours aria-label="Choose hour">00</button>
+    <span aria-hidden="true">:</span>
+    <button type="button" data-clock-minutes aria-label="Choose minute">00</button>
+  </div>
+  <p id="clock-help" class="small text-muted">Choose an hour, then a minute. Arrow keys adjust by one; Home/End jump to the first/last value. Enter selects.</p>
+  <p data-clock-status aria-live="polite" class="small"></p>
+  <div class="clock-face"
+       role="slider"
+       tabindex="0"
+       aria-label="Hour"
+       aria-valuemin="0"
+       aria-valuemax="23"
+       aria-valuenow="0">
+    <svg viewBox="0 0 280 280" aria-hidden="true" class="clock-hand">
+      <line x1="140" y1="140" x2="140" y2="62"></line><circle cx="140" cy="140" r="4"></circle>
+    </svg>
+    <div data-clock-numbers></div>
+  </div>
+  <div class="filter-actions">
+    <button type="button" class="button primary" data-clock-save>Use time</button>
+    <button type="button" class="button secondary" data-clock-cancel>Cancel</button>
   </div>
 </dialog>

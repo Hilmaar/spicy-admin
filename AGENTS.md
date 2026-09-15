@@ -40,8 +40,12 @@ or later scope unless explicitly asked.
   totals; denominator-only players never create report rows.
 - Denominator queries use FORCE INDEX (`type`) on the existing CoreProtect index; natural
   target queries retain their original index selection. All time remains the default.
+- Denominators aggregate block events by `b.user` before joining/filtering `co_user`, then
+  combine counts by normalized UUID. Do not restore per-block UUID/REGEXP checks or totals/sorts.
 - Calendar whole-day selections send next-day midnight as exclusive end; precise times
   retain inclusive-start/exclusive-end semantics. Server validation remains authoritative.
+- The radial clock edits calendar drafts only. Whole-day end remains next-day midnight;
+  explicitly chosen end times are exclusive. Clock Cancel and calendar Cancel discard their drafts.
 - Other ore pages, scores, workers, rollups, and event copies remain out of scope.
 - Only PostgreSQL belongs in runtime `DATABASES`; SQLite is isolated to automated tests.
 - Never log tokens, secrets, API payloads, or OAuth callback query strings.

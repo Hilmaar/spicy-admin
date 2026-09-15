@@ -1704,6 +1704,117 @@ tbody tr:hover {
   }
 }
 
+.time-control {
+  display: flex;
+  margin: 8px 0;
+  min-width: 100px;
+  font-variant-numeric: tabular-nums;
+}
+
+.precise-times [data-end-whole] {
+  border: 0;
+  background: none;
+  padding: 0;
+  color: var(--accent-text);
+}
+
+.clock-dialog {
+  width: 368px;
+  max-width: calc(100vw - 24px);
+  max-height: calc(100dvh - 24px);
+  overflow: auto;
+  padding: 20px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--surface);
+  color: var(--text);
+}
+
+.clock-dialog::backdrop {
+  background: rgba(0, 0, 0, .55);
+}
+
+.clock-readout {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 8px;
+  margin: 16px 0;
+  font-size: 30px;
+}
+
+.clock-readout button {
+  background: var(--surface-raised);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--text);
+  font: inherit;
+  font-variant-numeric: tabular-nums;
+}
+
+.clock-readout button[aria-pressed=true] {
+  color: var(--accent-text);
+  border-color: var(--accent-text);
+}
+
+.clock-face {
+  position: relative;
+  width: 280px;
+  max-width: 100%;
+  aspect-ratio: 1;
+  border-radius: 50%;
+  background: var(--surface-raised);
+  margin: 16px auto;
+  touch-action: manipulation;
+}
+
+.clock-hand {
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  stroke: var(--accent-text);
+  stroke-width: 2;
+  fill: var(--accent-text);
+}
+
+.clock-number {
+  position: absolute;
+  transform: translate(-50%, -50%);
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  color: var(--text);
+  background: var(--surface-raised);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+.clock-number.clock-dot {
+  width: 10px;
+  height: 10px;
+  line-height: 10px;
+  font-size: 10px;
+}
+
+.clock-number.selected {
+  background: var(--accent);
+  color: #10271d;
+}
+
+.clock-number.clock-dot.selected {
+  width: 22px;
+  height: 22px;
+  line-height: 22px;
+  z-index: 1;
+}
+
+.clock-face:focus-visible {
+  outline: 2px solid var(--accent-text);
+  outline-offset: 3px;
+}
+
 @media(prefers-reduced-motion:reduce) {
 
   *,

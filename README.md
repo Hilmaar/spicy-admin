@@ -333,7 +333,7 @@ There are no cheating scores or accusation thresholds.
 
 A combined UTC calendar replaces native date/time controls when JavaScript is available.
 Select start/end dates and Apply range; the final date is included in full using next-day
-midnight as exclusive end. Expand Adjust precise times for exact timestamps. Cancel/Escape
+midnight as exclusive end. Expand Adjust precise times for a themed radial 24-hour clock. Cancel/Escape
 discards edits. Labelled text fields remain available without JavaScript. Quick presets
 are unchanged. Table headers stay visible while scrolling within the table, and the
 dashboard has an Open mining statistics primary button.
@@ -349,3 +349,9 @@ production assumptions.
 Denominator queries force the existing CoreProtect `type` index, based on the supplied
 production EXPLAIN results. Natural target queries are unchanged. **All time remains the
 default and primary admin view**; no timeouts or database indexes were changed.
+
+The denominator query now groups events by CoreProtect user ID before joining player
+records, then combines totals by normalized UUID. It retains the existing `type` index
+hint and 3-second timeout; live MariaDB EXPLAIN/timing validation is still required.
+The precise-time clock changes calendar drafts only. Whole-day end includes the complete
+last date; a chosen clock end time is exclusive. Cancel preserves the previous selection.

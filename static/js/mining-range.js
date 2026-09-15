@@ -1,7 +1,7 @@
 /* UTC-only, progressive enhancement. The server remains the validation authority. */
 (() => {
   const dialog = document.querySelector('#mining-range-dialog');
-  if (!dialog || typeof dialog.showModal !== 'function') return;
+  if (!dialog || typeof dialog.showModal !== 'function' || !window.MiningClock) return;
   const form = document.querySelector('.analytics-filters');
   const preset = form.querySelector('#id_range');
   const startInput = form.querySelector('#id_start');
@@ -33,6 +33,24 @@
     return Number.isNaN(parsed.getTime()) ? null : parsed;
   };
   let first = null, last = null, hover = null, selectingEnd = false;
+  let wholeEnd = true;
+  const friendly = (raw) => {
+    const value = parse(raw);
+    return value ? value.toLocaleString('en-GB', {
+      day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit',
+      second: '2-digit', timeZone: 'UTC', hourCycle: 'h23'
+    }) : '';
+  };
+  const timeText = (raw, fallback) => {
+    const value = parse(raw);
+    return value ? value.toISOString().slice(11, 16) : fallback;
+  };
+  const updateTimes = () => {
+    dialog.querySelector('#start-time-value').textContent = timeText(exactStart.value, '00:00');
+    dialog.querySelector('#end-time-value').textContent = wholeEnd ? '23:59' : timeText(exactEnd.value, '23:59');
+    dialog.querySelector('[data-end-time-note]').textContent = wholeEnd ?
+      'End of day (includes the entire final date)' : `Exclusive end on ${last || 'the selected end date'}`;
+  };
   let month = date(`${today.slice(0, 7)}-01`), focusDay = today;
   const make = (tag, className, text) => {
     const node = document.createElement(tag);
@@ -59,6 +77,7 @@
   };
   const choose = (value) => {
     error.textContent = '';
+    wholeEnd = true;
     if (!selectingEnd) {
       first = value; last = null; hover = null; selectingEnd = true;
       exactStart.value = `${first}T00:00:00Z`; exactEnd.value = '';
@@ -67,7 +86,7 @@
       exactStart.value = `${first}T00:00:00Z`;
       exactEnd.value = `${addDays(last, 1)}T00:00:00Z`;
     }
-    describe(); paint();
+    describe(); paint(); updateTimes();
   };
   const render = () => {
     calendar.replaceChildren();
@@ -128,19 +147,21 @@
   };
   const updateSummary = () => {
     form.querySelector('[data-range-summary]').textContent = preset.value === 'custom' && startInput.value && endInput.value ?
-      `${startInput.value} ≤ break time < ${endInput.value} (UTC)` : 'Select both dates in one calendar. UTC, inclusive whole dates.';
+      `${friendly(startInput.value)} to ${friendly(endInput.value)} UTC (end exclusive)` : 'Select both dates in one calendar. UTC, inclusive whole dates.';
   };
   const open = () => {
     exactStart.value = startInput.value; exactEnd.value = endInput.value;
     const start = parse(startInput.value), end = parse(endInput.value);
+    wholeEnd = !end || (end.toISOString().slice(11) === '00:00:00.000Z' &&
+      !/\.\d*[1-9]/.test(endInput.value));
     first = start ? iso(start) : null;
-    last = end ? iso(new Date(end.getTime() - 1)) : null;
+    last = end ? iso(wholeEnd ? new Date(end.getTime() - 1) : end) : null;
     selectingEnd = false; hover = null; error.textContent = '';
     focusDay = first || today; month = date(`${focusDay.slice(0, 7)}-01`);
     dialog.querySelector('details').open = false;
-    render(); describe();
+    render(); describe(); updateTimes();
     if (start && end) dialog.querySelector('[data-selection]').textContent =
-      `${startInput.value} ≤ break time < ${endInput.value} UTC`;
+      `${friendly(startInput.value)} to ${friendly(endInput.value)} UTC (end exclusive)`;
     dialog.showModal(); calendar.querySelector('[tabindex="0"]')?.focus();
   };
   openButton.addEventListener('click', open);
@@ -153,9 +174,29 @@
     });
   }
   calendar.addEventListener('pointerleave', () => { hover = null; paint(); });
-  for (const input of [exactStart, exactEnd]) input.addEventListener('input', () => {
-    selectingEnd = false;
-    dialog.querySelector('[data-selection]').textContent = 'Precise UTC bounds override whole-date times. End is exclusive.';
+  for (const [selector, isEnd] of [['[data-time-start]', false], ['[data-time-end]', true]]) {
+    const button = dialog.querySelector(selector);
+    button.addEventListener('click', () => {
+      if (!first || !last || selectingEnd) {
+        error.textContent = 'Choose both dates before adjusting times.'; return;
+      }
+      const field = isEnd ? exactEnd : exactStart;
+      const time = isEnd && wholeEnd ? '23:59' : timeText(field.value, '00:00');
+      window.MiningClock.open(button, time, (selected) => {
+        field.value = `${isEnd ? last : first}T${selected}:00Z`;
+        if (isEnd) wholeEnd = false;
+        error.textContent = ''; updateTimes();
+        dialog.querySelector('[data-selection]').textContent =
+          `${friendly(exactStart.value)} to ${friendly(exactEnd.value)} UTC (end exclusive)`;
+      });
+    });
+  }
+  dialog.querySelector('[data-end-whole]').addEventListener('click', () => {
+    if (!last || selectingEnd) return;
+    wholeEnd = true; exactEnd.value = `${addDays(last, 1)}T00:00:00Z`;
+    updateTimes();
+    dialog.querySelector('[data-selection]').textContent =
+      `${friendly(exactStart.value)} to ${friendly(exactEnd.value)} UTC (end exclusive)`;
   });
   dialog.querySelector('[data-range-apply]').addEventListener('click', () => {
     const start = parse(exactStart.value), end = parse(exactEnd.value);

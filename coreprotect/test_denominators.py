@@ -31,7 +31,7 @@ class DenominatorTests(MiningFixture, SimpleTestCase):
         self.event(material=self.stone)
         self.event(material=self.slate)
         self.event(material=self.slate, user=20)
-        self.assertEqual(
+        self.assertCountEqual(
             self.bases(),
             (
                 MaterialBreakRow("a" * 32, "Alice", (1, 1)),
@@ -141,3 +141,31 @@ class DenominatorTests(MiningFixture, SimpleTestCase):
                 target_sql, _ = self.repository._diamond_statement(query, self.normal, self.deep)
                 self.assertNotIn("FORCE INDEX", target_sql)
                 self.assertIn("NOT EXISTS", target_sql)
+
+    def test_denominator_aggregates_before_player_join_without_total_or_sort(self):
+        sql, _ = self.repository._aggregate_statement(
+            DiamondQuery(), (self.stone, self.slate), natural_only=False
+        )
+        inner = sql.split("FROM (", 1)[1].split(") base", 1)[0]
+        self.assertIn("SELECT b.user, SUM(CASE", inner)
+        self.assertIn("GROUP BY b.user", inner)
+        self.assertNotIn("JOIN", inner)
+        self.assertNotIn("REGEXP", inner)
+        self.assertIn("u.rowid = base.user", sql)
+        self.assertIn("SUM(base.count_0)", sql)
+        self.assertIn("SUM(base.count_1)", sql)
+        self.assertNotIn("COUNT(", sql)
+        self.assertNotIn("ORDER BY total", sql)
+        self.assertEqual(sql.count("ORDER BY NULL"), 2)
+
+    def test_many_events_and_multiple_user_ids_sum_by_uuid_after_filtering(self):
+        self.db.execute(
+            "INSERT INTO co_user VALUES (11, 'OldName', ?)",
+            ("AAAAAAAA-AAAA-AAAA-AAAA-AAAAAAAAAAAA",),
+        )
+        for _ in range(40):
+            self.event(material=self.stone)
+            self.event(material=self.stone, user=11)
+            self.event(material=self.slate, user=11)
+            self.event(material=self.slate, user=30)
+        self.assertEqual(self.bases(), (MaterialBreakRow("a" * 32, "Alice", (80, 40)),))

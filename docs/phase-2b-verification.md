@@ -1,6 +1,32 @@
 # Phase 2B verification
 
-## Focused corrections: current verification
+## Derived denominator query and radial clock: current verification
+
+All **142 Django tests passed**, including the complete earlier suite and new contracts
+for aggregation before the user join, removal of unused denominator totals/sorts, and
+many-event/duplicate-UUID semantic aggregation. Denominator ordering is deliberately
+unspecified; service-layer final ordering remains tested. Natural-target SQL is unchanged.
+
+Ruff lint/format (59 Python files), migration consistency, all 13 template lint/format
+checks, `git diff --check`, and production manifest/static compression checks passed.
+The local headless Edge suite passed with synthetic CoreProtect data and mocked Discord.
+It covers both clock faces, inner/outer hours, arbitrary minutes, mouse and touch taps,
+keyboard adjustment, clock Cancel/Escape/focus return, calendar Cancel, no submission on
+Use time, and submission only on Apply range. Whole-day end, explicit 23:59 exclusive,
+restoring end of day, leap dates, offset/subsecond preservation, non-UTC browser timezone,
+JavaScript-disabled fallback, dark/light themes, mobile layouts, and earlier portal/table
+regressions also passed. Screenshots/harness remain local ignored `.artifacts/` files.
+
+Denominator SQL groups filtered events by `b.user` using the existing `type` hint, then
+joins the reduced totals to `co_user`, applies player classification, and sums by normalized
+UUID. It has no unused total count/ranking sort; `ORDER BY NULL` suppresses implicit group
+ordering. All Time remains the default. The user reports that the previous query exceeded
+3 seconds; this optimization's MariaDB plan and actual latency have **not** been validated
+locally. The [production validation procedure](coreprotect.md#denominator-derived-table-optimization)
+describes the required next checks. No timeout, infrastructure, schema/index changes,
+PostgreSQL aggregation, push, merge, or deployment occurred.
+
+## Earlier focused corrections
 
 The later Phase 2B corrections supersede the initial full-union behavior recorded below.
 Denominator queries now force the existing index named `type`; natural-target queries
