@@ -1,12 +1,22 @@
+from __future__ import annotations
+
 import hashlib
 import json
 from dataclasses import dataclass
 from datetime import datetime
+from fractions import Fraction
 
 from django.core.cache import cache
 from django.utils import timezone
 
-from coreprotect.mining import SMALL_SAMPLE_BASE_BLOCKS, DiamondQuery, DiamondStatsRow, ratio
+from coreprotect.mining import (
+    DIAMONDS,
+    SMALL_SAMPLE_BASE_BLOCKS,
+    DiamondQuery,
+    DiamondStatsRow,
+    MaterialBreakRow,
+    ratio,
+)
 from coreprotect.repository import get_repository
 
 from . import rollups
@@ -17,7 +27,7 @@ CACHE_SECONDS = 45
 @dataclass(frozen=True)
 class DiamondReport:
     query: DiamondQuery
-    rows: tuple[DiamondStatsRow, ...]
+    rows: tuple[DiamondStatsRow | OrePlayerRow, ...]
     checked_at: datetime
     base_updated_at: datetime
     base_reconciled_at: datetime | None
@@ -38,6 +48,7 @@ class MiningLayerRow:
     player_name: str
     target_count: int
     base_count: int
+    threshold: int = SMALL_SAMPLE_BASE_BLOCKS
 
     @property
     def per_1000(self):
@@ -49,7 +60,7 @@ class MiningLayerRow:
 
     @property
     def small_sample(self):
-        return self.base_count < SMALL_SAMPLE_BASE_BLOCKS
+        return self.base_count < self.threshold
 
 
 def layer_rows(rows, target, base):
@@ -58,7 +69,7 @@ def layer_rows(rows, target, base):
         for r in rows
         if getattr(r, target) > 0
     ]
-    return tuple(sorted(selected, key=lambda r: (-r.target_count, r.player_name, r.player_uuid)))
+    return sort_layer(selected)
 
 
 def _get_cached(key):
@@ -85,15 +96,16 @@ def list_worlds():
     return worlds
 
 
-def get_report(form):
+def get_report(form, group=DIAMONDS):
     now = timezone.now()
     query = form.to_query(now=now)
-    snapshot = rollups.read_snapshot(query, now)
+    snapshot = rollups.read_snapshot(query, now, group)
     range_name = form.cleaned_data["range"]
     # Relative ranges use their selection, not a constantly changing `now`, as the key.
     # The cached report retains the exact bounds used, so the UI never labels old data
     # with newly calculated bounds. Custom bounds are canonical UTC ISO timestamps.
     identity = {
+        "group": group.slug,
         "range": range_name,
         "start": query.start.isoformat() if range_name == "custom" else None,
         "end": query.end.isoformat() if range_name == "custom" else None,
@@ -101,13 +113,21 @@ def get_report(form):
         "sync_generation": snapshot.generation,
     }
     digest = hashlib.sha256(json.dumps(identity, sort_keys=True).encode()).hexdigest()
-    key = f"diamonds:v4:report:{digest}"
+    key = f"mining:v5:report:{digest}"
     report = _get_cached(key)
     if report is None:
         repository = get_repository()
-        targets = repository.get_diamond_stats(query)
-        denominators = rollups.denominators(snapshot, repository)
-        rows = merge_diamond_rows(targets, denominators)
+        targets = read_targets(repository, query, group)
+        denominators = rollups.denominators(snapshot, repository, group)
+        merged = merge_ore_rows(targets, denominators, len(group.denominator_materials))
+        # Preserve the established diamond service result for internal callers.
+        rows = (
+            tuple(
+                DiamondStatsRow(r.player_uuid, r.player_name, *r.targets, *r.bases) for r in merged
+            )
+            if group == DIAMONDS
+            else merged
+        )
         report = DiamondReport(
             query, rows, now, snapshot.updated_at, snapshot.reconciled_at, snapshot.warning
         )
@@ -117,21 +137,112 @@ def get_report(form):
 
 def merge_diamond_rows(targets, denominators):
     """Attach base counts to natural-diamond miners by normalized UUID."""
-    players = {}
-    for rows, offset in ((targets, 0), (denominators, 2)):
-        for row in rows:
-            uuid = row.player_uuid.replace("-", "").lower()
-            if offset == 2 and uuid not in players:
-                continue
-            entry = players.setdefault(uuid, [row.player_name, 0, 0, 0, 0])
-            if row.player_name:
-                entry[0] = min(entry[0], row.player_name)
-            counts = (row.diamond_ore, row.deepslate_diamond_ore) if offset == 0 else row.counts
-            for i, count in enumerate(counts):
-                entry[1 + offset + i] += count
-    result = [
-        DiamondStatsRow(uuid, *values)
-        for uuid, values in players.items()
-        if values[1] + values[2] > 0
-    ]
+    converted = tuple(
+        MaterialBreakRow(r.player_uuid, r.player_name, (r.diamond_ore, r.deepslate_diamond_ore))
+        for r in targets
+    )
+    merged = merge_ore_rows(converted, denominators, 2)
+    result = tuple(
+        DiamondStatsRow(r.player_uuid, r.player_name, *r.targets, *r.bases) for r in merged
+    )
     return tuple(sorted(result, key=lambda row: (-row.total, row.player_name, row.player_uuid)))
+
+
+@dataclass(frozen=True)
+class OrePlayerRow:
+    player_uuid: str
+    player_name: str
+    targets: tuple[int, ...]
+    bases: tuple[int, ...]
+
+
+def read_targets(repository, query, group):
+    if group == DIAMONDS:
+        return tuple(
+            MaterialBreakRow(r.player_uuid, r.player_name, (r.diamond_ore, r.deepslate_diamond_ore))
+            for r in repository.get_diamond_stats(query)
+        )
+    return repository.get_material_stats(query, group.target_materials, natural_only=True)
+
+
+def merge_ore_rows(targets, bases, base_count):
+    players = {}
+    for row in targets:
+        uuid = row.player_uuid.replace("-", "").lower()
+        entry = players.setdefault(uuid, [row.player_name, [0] * len(row.counts), [0] * base_count])
+        entry[0] = min(entry[0], row.player_name)
+        for i, count in enumerate(row.counts):
+            entry[1][i] += count
+    for row in bases:
+        uuid = row.player_uuid.replace("-", "").lower()
+        if uuid not in players:
+            continue
+        entry = players[uuid]
+        if row.player_name:
+            entry[0] = min(entry[0], row.player_name)
+        for i, count in enumerate(row.counts):
+            entry[2][i] += count
+    return tuple(
+        OrePlayerRow(uuid, name, tuple(targets), tuple(bases))
+        for uuid, (name, targets, bases) in sorted(players.items())
+        if sum(targets) > 0
+    )
+
+
+def sort_layer(rows):
+    # Missing ratios are last within either sample class. Ties never depend on DB order.
+    return tuple(
+        sorted(
+            rows,
+            key=lambda r: (
+                r.small_sample,
+                r.base_count == 0,
+                -Fraction(r.target_count, r.base_count) if r.base_count else 0,
+                r.player_name.lower(),
+                r.player_name,
+                r.player_uuid,
+            ),
+        )
+    )
+
+
+def report_tables(report, page):
+    tables = []
+    for config in page.tables:
+        rows = []
+        for player in report.rows:
+            if isinstance(player, DiamondStatsRow):
+                targets = (player.diamond_ore, player.deepslate_diamond_ore)
+                bases = (player.stone, player.deepslate)
+            else:
+                targets, bases = player.targets, player.bases
+            if targets[config.target_index] > 0:
+                rows.append(
+                    MiningLayerRow(
+                        player.player_uuid,
+                        player.player_name,
+                        targets[config.target_index],
+                        bases[config.base_index],
+                        config.default_threshold,
+                    )
+                )
+        tables.append({"config": config, "rows": sort_layer(rows)})
+    return tables
+
+
+@dataclass(frozen=True)
+class OverviewMetric:
+    total: int
+    players: int
+    checked_at: datetime
+
+
+def overview_metric(group):
+    key = f"mining:v1:overview:{group.slug}:all"
+    metric = _get_cached(key)
+    if metric is None:
+        targets = read_targets(get_repository(), DiamondQuery(), group)
+        merged = merge_ore_rows(targets, (), 0)
+        metric = OverviewMetric(sum(sum(r.targets) for r in merged), len(merged), timezone.now())
+        _set_cached(key, metric)
+    return metric

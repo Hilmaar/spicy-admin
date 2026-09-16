@@ -1,0 +1,40 @@
+{% extends "portal/layout.html" %}
+{% load humanize static %}
+{% block title %}Ore Statistics{% endblock %}
+{% block breadcrumb %}Ore Statistics / Overview{% endblock %}
+{% block content %}
+  <div class="page-heading">
+    <div>
+      <p class="eyebrow accent-text">Ore Statistics</p>
+      <h1>Mining overview</h1>
+      <p>Natural ore blocks mined across all time and all worlds.</p>
+    </div>
+  </div>
+  {% include "analytics/material_nav.html" %}
+  <div class="ore-overview">
+    {% for card in cards %}
+      <section class="card material-card material-{{ card.page.slug }}"
+               aria-labelledby="{{ card.page.slug }}-card">
+        {% if card.page.image %}
+          <img class="material-icon"
+               src="{% static card.page.image %}"
+               alt=""
+               width="32"
+               height="32">
+        {% else %}
+          <span class="material-gem" aria-hidden="true"></span>
+        {% endif %}
+        <h2 id="{{ card.page.slug }}-card">{{ card.page.label }}</h2>
+        {% if card.metric %}
+          <p class="material-total"><strong>{{ card.metric.total|intcomma }}</strong> mined</p>
+          <p>{{ card.metric.players|intcomma }} player{{ card.metric.players|pluralize }}</p>
+          <p class="small text-muted">Queried {{ card.metric.checked_at|date:"Y-m-d H:i:s" }} UTC</p>
+    {% else %}<p role="status">Statistics unavailable. Please try again shortly.</p>{% endif %}
+    <a class="button secondary"
+       href="{{ card.page.url }}"
+       aria-label="View {{ card.page.label }} statistics">View statistics {% include "components/icon.html" with name="arrow" %}</a>
+      </section>
+    {% endfor %}
+  </div>
+  <p class="small text-muted">Counts represent qualifying natural ore blocks, not item drops. Each player is counted once per material group. Results may be cached for up to 45 seconds.</p>
+{% endblock %}

@@ -1,5 +1,9 @@
 # Phase 2B.1 mining rollups
 
+Phase 2B.2 extends this architecture to Ancient Debris/Netherrack and Emerald.
+See [current groups, sorting, thresholds, and the required material-signature rebuild](ore-statistics.md).
+The operational details below describe the original Phase 2B.1 foundation.
+
 All Time is the default and primary view. Production stone/deepslate scans exceeded the
 three-second limit despite the existing `type` index hint and aggregation before joining
 players. Reports now use compact portal PostgreSQL aggregates. **All Time must never fall

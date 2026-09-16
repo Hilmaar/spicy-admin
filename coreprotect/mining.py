@@ -17,6 +17,14 @@ DIAMONDS = OreGroup(
     ("minecraft:diamond_ore", "minecraft:deepslate_diamond_ore"),
     ("minecraft:stone", "minecraft:deepslate"),
 )
+ANCIENT_DEBRIS = OreGroup(
+    "ancient-debris", ("minecraft:ancient_debris",), ("minecraft:netherrack",)
+)
+EMERALD = OreGroup(
+    "emerald",
+    ("minecraft:emerald_ore", "minecraft:deepslate_emerald_ore"),
+    ("minecraft:stone", "minecraft:deepslate"),
+)
 DIAMOND_MATERIALS = DIAMONDS.target_materials
 SMALL_SAMPLE_BASE_BLOCKS = 1000
 

@@ -1,6 +1,9 @@
 from django.urls import path
 
-from .views import diamonds
+from .ore_config import PAGES
+from .views import detail, overview
 
 app_name = "analytics"
-urlpatterns = [path("diamonds/", diamonds, name="diamonds")]
+urlpatterns = [path("", overview, name="overview")] + [
+    path(f"{page.slug}/", detail, {"slug": page.slug}, name=page.slug) for page in PAGES
+]

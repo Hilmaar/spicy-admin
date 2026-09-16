@@ -25,6 +25,7 @@ from django.contrib.staticfiles.handlers import StaticFilesHandler
 from django.core.management import call_command
 from django.core.wsgi import get_wsgi_application
 from django.test import Client
+from mining_browser_checks import check_mining_tables
 from playwright.sync_api import sync_playwright
 
 from accounts.discord import Membership
@@ -43,6 +44,23 @@ for uuid, counts in [("a" * 32, (123000, 567000)), ("b" * 32, (10, 20))]:
     for key, count in zip(("stone", "deepslate"), counts, strict=True):
         MiningMaterialDaily.objects.create(
             date="2026-09-01", player_uuid=uuid, world_id=927, material_key=key, break_count=count
+        )
+
+MiningMaterialDaily.objects.create(
+    date="2026-09-01",
+    player_uuid="a" * 32,
+    world_id=927,
+    material_key="netherrack",
+    break_count=4000,
+)
+for i in range(1, 11):
+    for key, count in (("stone", 1500), ("deepslate", 2500)):
+        MiningMaterialDaily.objects.create(
+            date="2026-09-01",
+            player_uuid=f"{i:032x}",
+            world_id=927,
+            material_key=key,
+            break_count=count,
         )
 
 user, _ = User.objects.get_or_create(
@@ -93,12 +111,18 @@ try:
             MaterialBreakRow("f" * 32, "DenominatorOnly", (999, 999)),
             *(MaterialBreakRow(f"{i:032x}", f"Miner{i:03}", (1500, 2500)) for i in range(1, 51)),
         )
+        analytics_factory.return_value.get_material_stats.side_effect = (
+            lambda query, materials, **kwargs: (
+                MaterialBreakRow("a" * 32, "FixtureAlice", (4,) if len(materials) == 1 else (3, 9)),
+            )
+        )
         with sync_playwright() as p:
             browser = p.chromium.launch(channel="msedge", headless=True)
             context = browser.new_context(
                 viewport={"width": 1440, "height": 1080},
                 timezone_id="Pacific/Honolulu",
                 has_touch=True,
+                reduced_motion="reduce",
             )
             context.route(
                 "https://cdn.discordapp.com/**",
@@ -160,6 +184,15 @@ try:
             assert page.get_by_role("heading", name="Connection unavailable").is_visible()
             page.set_viewport_size({"width": 1440, "height": 1080})
             page.get_by_role("link", name="Ore Statistics", exact=True).click()
+            assert page.url.endswith("/ore-statistics/")
+            assert page.locator(".material-card").count() == 3
+            assert page.locator(".material-nav a[aria-current=page]").inner_text() == "Overview"
+            analytics_factory.return_value.get_denominator_stats.assert_not_called()
+            page.screenshot(path=str(ROOT / ".artifacts/overview-dark.png"), full_page=True)
+            page.get_by_role("button", name="Switch to light theme").click()
+            page.screenshot(path=str(ROOT / ".artifacts/overview-light.png"), full_page=True)
+            page.get_by_role("button", name="Switch to dark theme").click()
+            page.get_by_role("link", name="View Diamonds statistics").click()
             assert page.url.endswith("/ore-statistics/diamonds/")
             assert page.get_by_role("heading", name="Diamond Mining Statistics").is_visible()
             assert (
@@ -178,6 +211,7 @@ try:
             analytics_factory.return_value.get_denominator_stats.assert_not_called()
             assert page.get_by_text("DenominatorOnly", exact=True).count() == 0
             assert page.locator("#id_range").input_value() == "all"
+            check_mining_tables(page, base, analytics_factory.return_value, ROOT)
             page.screenshot(path=str(ROOT / ".artifacts/diamonds-dark.png"), full_page=True)
             page.get_by_role("button", name="Switch to light theme").click()
             page.screenshot(path=str(ROOT / ".artifacts/diamonds-light.png"), full_page=True)

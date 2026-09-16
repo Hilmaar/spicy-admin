@@ -53,7 +53,7 @@ class RollupSnapshot:
     boundaries: tuple[DiamondQuery, ...]
 
 
-def read_snapshot(query, now):
+def read_snapshot(query, now, group=DIAMONDS):
     parts = split_range(query)
     # Lock only while reading local metadata and SUMs, never while calling CoreProtect.
     # Sync updates the same state row atomically with every bucket commit/replacement.
@@ -78,11 +78,10 @@ def read_snapshot(query, now):
             raise RollupUnavailable(
                 "Base-block analytics are unavailable because the last successful sync is too old."
             )
-        keys = tuple(config.ROLLUP_MATERIALS)
         # Material lookup order follows the code-defined ore group, not DB numeric IDs.
         material_keys = {name: key for key, name in config.ROLLUP_MATERIALS.items()}
-        ordered = tuple(material_keys[name] for name in DIAMONDS.denominator_materials)
-        rows = MiningMaterialDaily.objects.filter(material_key__in=keys)
+        ordered = tuple(material_keys[name] for name in group.denominator_materials)
+        rows = MiningMaterialDaily.objects.filter(material_key__in=ordered)
         if parts.start_date is not None:
             rows = rows.filter(date__gte=parts.start_date, date__lt=parts.end_date)
         if query.world_id is not None:
@@ -104,7 +103,7 @@ def read_snapshot(query, now):
         )
 
 
-def denominators(snapshot, repository):
+def denominators(snapshot, repository, group=DIAMONDS):
     rows = list(snapshot.counts)
     for boundary in snapshot.boundaries:
         # Never use an open-ended/full-history fallback, including before bootstrap.
@@ -114,5 +113,5 @@ def denominators(snapshot, repository):
             or boundary.end - boundary.start >= timedelta(days=1)
         ):
             raise ValueError("Live denominator windows must be shorter than one UTC day.")
-        rows.extend(repository.get_denominator_stats(boundary, DIAMONDS))
+        rows.extend(repository.get_denominator_stats(boundary, group))
     return tuple(rows)

@@ -5,7 +5,8 @@ Phase 1 includes Discord login, current-role authorization, a responsive dark/li
 documentation placeholders, and read-only CoreProtect diagnostics. Phase 2A adds natural
 diamond mining counts with time/world filters. Phase 2B adds stone/deepslate mining ratios
 and a themed date-range picker. Phase 2B.1 adds PostgreSQL daily denominator rollups
-and separate normal/deepslate tables. Other ores, live activity,
+and separate normal/deepslate tables. Phase 2B.2 adds an ore overview, sortable tables,
+independent sample thresholds, Ancient Debris, and Emerald. Further ores, live activity,
 player investigations, punishments, and integrations remain future scope.
 
 ## Architecture
@@ -334,3 +335,26 @@ Historical checks remain in [Phase 2A verification](docs/phase-2a-verification.m
 [Phase 2B verification](docs/phase-2b-verification.md).
 Current checks and the repeatable browser harness are documented in
 [Phase 2B.1 verification](docs/phase-2b1-verification.md).
+
+## Ore overview and sortable reports (Phase 2B.2)
+
+**Ore Statistics** and the dashboard mining action now open `/ore-statistics/`, with compact
+Diamonds / Ancient Debris / Emerald cards and shared material navigation. Cards show natural
+block totals and unique target miners across All Time; they do not query denominators.
+Detail pages retain the UTC filters/calendar/clock and show Deepslate before Normal where
+applicable. Ancient Debris uses Netherrack; Emerald uses Stone/Deepslate.
+
+Every table sorts by ratio descending initially, always keeping small samples last.
+Clickable keyboard-accessible headers sort any column. Each table independently persists
+its Minimum sample in the browser: 250/500/1000/2500/5000/10000, with configurable code
+defaults currently 1000. Changes only reclassify/reorder existing rows and never query data.
+
+**Upgrade action:** Netherrack joins the existing rollup and changes its material signature.
+Existing Phase 2B.1 installations require `sync_mining_analytics --full-rebuild` with the
+updated image, then an ordinary sync to catch up. Detail ratios remain unavailable until
+completion; overview cards still work. This phase needs no additional database migration.
+No rebuild or deployment is run automatically by this change.
+
+See [ore configuration, sorting, assets, and upgrade instructions](docs/ore-statistics.md)
+and [Phase 2B.2 verification](docs/phase-2b2-verification.md). CoreProtect remains read-only;
+All Time still makes no live denominator scan. No infrastructure or timeout changes apply.

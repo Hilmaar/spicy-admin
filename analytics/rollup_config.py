@@ -1,6 +1,10 @@
 """Application configuration, not CoreProtect numeric IDs or host scheduler settings."""
 
-ROLLUP_MATERIALS = {"stone": "minecraft:stone", "deepslate": "minecraft:deepslate"}
+ROLLUP_MATERIALS = {
+    "stone": "minecraft:stone",
+    "deepslate": "minecraft:deepslate",
+    "netherrack": "minecraft:netherrack",
+}
 SOURCE_NAME = "coreprotect"
 BATCH_SIZE = 10000
 MAX_BATCH_SIZE = 50000

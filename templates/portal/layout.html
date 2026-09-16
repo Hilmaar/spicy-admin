@@ -12,7 +12,7 @@
         {% if can_view_analytics %}
           <a class="nav-item {% if request.resolver_match.app_name == 'analytics' %}active{% endif %}"
              {% if request.resolver_match.app_name == 'analytics' %}aria-current="page"{% endif %}
-             href="{% url 'analytics:diamonds' %}">{% include "components/icon.html" with name="diamond" %} Ore Statistics</a>
+             href="{% url 'analytics:overview' %}">{% include "components/icon.html" with name="diamond" %} Ore Statistics</a>
         {% endif %}
         <span class="nav-item unavailable">{% include "components/icon.html" with name="activity" %} Live Ore Activity <small>Later</small></span>
         <span class="nav-item unavailable">{% include "components/icon.html" with name="shield" %} Bans <small>Later</small></span>

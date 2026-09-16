@@ -198,7 +198,7 @@ class CacheTests(TestCase):
         with patch("analytics.services.cache.set") as store:
             get_report(self.form({"range": "7d"}))
         key, report = store.call_args.args
-        self.assertTrue(key.startswith("diamonds:v4:report:"))
+        self.assertTrue(key.startswith("mining:v5:report:"))
         self.assertEqual(
             set(vars(report)),
             {
@@ -369,7 +369,7 @@ class DiamondPageTests(TestCase):
     def test_navigation_and_dashboard_link_to_real_feature(self):
         self.login()
         response = self.client.get("/")
-        self.assertContains(response, f'href="{self.url}"')
+        self.assertContains(response, 'href="/ore-statistics/"')
         self.assertNotContains(response, "Ore analytics not configured yet")
         self.assertContains(response, "Live Ore Activity")
 

@@ -1,0 +1,21 @@
+{% load static %}
+<nav class="material-nav" aria-label="Ore materials">
+  <a href="{% url 'analytics:overview' %}"
+     {% if not ore_page %}aria-current="page"{% endif %}>Overview</a>
+  {% for page in ore_pages %}
+    <a class="material-{{ page.slug }}"
+       href="{{ page.url }}"
+       {% if ore_page.slug == page.slug %}aria-current="page"{% endif %}>
+      {% if page.image %}
+        <img class="material-icon"
+             src="{% static page.image %}"
+             alt=""
+             width="20"
+             height="20">
+      {% else %}
+        <span class="material-gem" aria-hidden="true"></span>
+      {% endif %}
+      {{ page.label }}
+    </a>
+  {% endfor %}
+</nav>

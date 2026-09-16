@@ -1,36 +1,74 @@
 {% load humanize mining %}
-<section class="card table-card" aria-labelledby="{{ table_id }}-heading">
-  <div class="card-heading">
-    <h2 id="{{ table_id }}-heading">{{ heading }}</h2>
+<section class="card table-card"
+         aria-labelledby="{{ config.key }}-heading"
+         data-mining-table
+         data-table-key="{{ config.key }}"
+         data-default-threshold="{{ config.default_threshold }}">
+  <div class="card-heading mining-table-heading">
+    <h2 id="{{ config.key }}-heading">{{ config.title }}</h2>
+    <div class="sample-control" hidden>
+      <label for="{{ config.key }}-threshold">Minimum sample</label>
+      <select id="{{ config.key }}-threshold" data-sample-threshold>
+        {% for option in sample_options %}<option value="{{ option }}"
+        {% if option == config.default_threshold %}selected{% endif %}>{{ option|intcomma }}</option>{% endfor %}
+      </select>
+    </div>
+    <noscript><span class="small text-muted">Minimum sample: {{ config.default_threshold|intcomma }}. Ratios sorted descending; smaller samples last.</span></noscript>
   </div>
   {% if rows %}
     <div class="table-scroll statistics-scroll"
          role="region"
-         aria-label="{{ heading }} counts"
+         aria-label="{{ config.title }} counts"
          tabindex="0">
-      <table class="statistics-table layer-table" id="{{ table_id }}">
-        <caption class="sr-only">{{ heading }}, sorted by natural ore count descending, then player name and UUID.</caption>
+      <table class="statistics-table layer-table" id="{{ config.key }}">
+        <caption class="sr-only">{{ config.title }}. Smaller samples are always ranked last. Use column buttons to sort.</caption>
         <thead>
           <tr>
-            <th scope="col">Player</th>
-            <th scope="col" class="number" aria-sort="descending">{{ target_label }}</th>
-            <th scope="col" class="number">{{ base_label }}</th>
-            <th scope="col" class="number">{{ rate_label }}</th>
-            <th scope="col" class="number">{{ inverse_label }}</th>
+            <th scope="col" aria-sort="none">
+              <button type="button"
+                      disabled
+                      data-sort="player">Player<span class="sort-indicator"
+      aria-hidden="true"></span></button>
+            </th>
+            <th scope="col" class="number" aria-sort="none">
+              <button type="button" disabled data-sort="target">{{ config.target_label }}<span class="sort-indicator" aria-hidden="true"></span></button>
+            </th>
+            <th scope="col" class="number" aria-sort="none">
+              <button type="button"
+                      disabled
+                      data-sort="base">{{ config.base_label }}<span class="sort-indicator"
+      aria-hidden="true"></span></button>
+            </th>
+            <th scope="col" class="number" aria-sort="descending">
+              <button type="button"
+                      disabled
+                      data-sort="rate">{{ config.rate_label }}<span class="sort-indicator"
+      aria-hidden="true"></span></button>
+            </th>
+            <th scope="col" class="number" aria-sort="none">
+              <button type="button" disabled data-sort="inverse">{{ config.inverse_label }}<span class="sort-indicator" aria-hidden="true"></span></button>
+            </th>
           </tr>
         </thead>
         <tbody>
           {% for row in rows %}
-            <tr>
-              <th scope="row">{{ row.player_name }}{% if row.small_sample %}<span class="sample-badge">Small sample</span>{% endif %}</th>
+            <tr data-player="{{ row.player_name }}"
+                data-uuid="{{ row.player_uuid }}"
+                data-target="{{ row.target_count }}"
+                data-base="{{ row.base_count }}">
+              <th scope="row">{{ row.player_name }}<span class="sample-badge"
+      {% if not row.small_sample %}hidden{% endif %}>Small sample</span></th>
               <td class="number mono accent-text">{{ row.target_count|intcomma }}</td>
               <td class="number mono">{{ row.base_count|intcomma }}</td>
-              <td class="number mono {% if row.small_sample %}ratio-muted{% endif %}">{{ row.per_1000|mining_ratio }}</td>
-              <td class="number mono {% if row.small_sample %}ratio-muted{% endif %}">{{ row.per_target|mining_ratio }}</td>
+              <td data-ratio
+                  class="number mono {% if row.small_sample %}ratio-muted{% endif %}">{{ row.per_1000|mining_ratio }}</td>
+              <td data-ratio
+                  class="number mono {% if row.small_sample %}ratio-muted{% endif %}">{{ row.per_target|mining_ratio }}</td>
             </tr>
           {% endfor %}
         </tbody>
       </table>
     </div>
+    <p class="sr-only" data-sort-status role="status" aria-live="polite"></p>
   {% else %}<p class="analytics-empty">No qualifying natural breaks matched this layer and range.</p>{% endif %}
 </section>

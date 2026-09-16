@@ -1,13 +1,13 @@
 # spicy-admin invariants
 
-Phase 1, Phase 2A, and Phase 2B.1 (daily denominator rollups and separate diamond tables) are implemented. Do not implement Phase 2C
+Phase 1, Phase 2A, and Phase 2B.2 (ore overview, sortable mining tables, and first expansion groups) are implemented. Do not implement Phase 2C
 or later scope unless explicitly asked.
 
 1. **CoreProtect is READ ONLY.** Never write data, change schema/indexes, run migrations,
    or perform rollbacks against it. Production credentials must have SELECT-only access.
 2. Never hardcode numeric CoreProtect material IDs. Resolve names through `co_material_map`.
 3. Never hardcode numeric world IDs. Resolve names through `co_world`.
-4. Target ores must exclude player-placed blocks. Phase 2B stone/deepslate denominators
+4. Target ores must exclude player-placed blocks. Phase 2B.2 stone/deepslate/netherrack denominators
    intentionally count all qualifying player breaks, including previously placed blocks.
    Never add historical placement exclusion to these denominator queries.
 5. Only an earlier non-rolled-back player placement of the same material at the same
@@ -31,12 +31,12 @@ or later scope unless explicitly asked.
 - `accounts`: OAuth and a single centralized permission service; no password backend.
 - `portal`: dashboard/layout; `documentation`: sanitized, allowlisted repository Markdown.
 - `coreprotect`: semantic repository boundary, no Django-managed external models.
-- `analytics`: validated UTC diamond filters, short result caching, and protected UI.
+- `analytics`: validated UTC ore filters, short result caching, and protected UI.
 - Centralize breaker/placer classification: non-empty non-# name and well-formed non-nil
   UUID. Group diamond results by normalized UUID; do not assume every co_user row is a player.
 - Cache hits must never bypass `minecraft.analytics` authorization or Discord revalidation.
 - Merge target/base aggregates by normalized UUID using identical time/world query bounds;
-  cache only complete successful reports. Display only players with positive natural-diamond
+  cache only complete successful reports. Display only players with positive natural-target
   totals; denominator-only players never create report rows.
 - Live boundary/reconciliation denominator queries use FORCE INDEX (`type`); rowid batches
   use PRIMARY. These are existing CoreProtect indexes; natural
@@ -52,7 +52,11 @@ or later scope unless explicitly asked.
 - Sync uses a PostgreSQL advisory lock, atomic batch/watermark commits, and recent UTC-day
   replacement capped at the committed watermark. Read docs/mining-rollups.md before changes.
 - Show only positive natural miners in each independently sorted layer table.
-- Other ore pages, scores, worker frameworks, and raw event copies remain out of scope.
+- Diamonds, Ancient Debris, and Emerald share the ore catalog and detail table component.
+- Read docs/ore-statistics.md for catalog, sorting, threshold, and upgrade behavior.
+- Default table ordering is ratio descending, small samples always last. Per-table thresholds
+  persist independently in the browser; options are 250/500/1000/2500/5000/10000, default 1000.
+- Further ore pages, scores, worker frameworks, and raw event copies remain out of scope.
 - Only PostgreSQL belongs in runtime `DATABASES`; SQLite is isolated to automated tests.
 - Never log tokens, secrets, API payloads, or OAuth callback query strings.
 - Run `python manage.py test --settings=config.settings.test`, `ruff check .`, and

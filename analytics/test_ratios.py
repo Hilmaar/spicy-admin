@@ -160,8 +160,8 @@ class RatioPageTests(TestCase):
         )
         response = self.client.get("/ore-statistics/diamonds/")
         html = response.content.decode()
-        normal, deep = html.split('id="deepslate-diamonds-heading"')
-        normal = normal.split('id="normal-diamonds-heading"')[1]
+        deep, normal = html.split('id="normal-diamonds-heading"')
+        deep = deep.split('id="deepslate-diamonds-heading"')[1]
         self.assertIn("NormalOnly", normal)
         self.assertNotIn("DeepOnly", normal)
         self.assertIn("DeepOnly", deep)
@@ -236,9 +236,7 @@ class RatioPageTests(TestCase):
         self.assertContains(response, '<input id="precise-start" type="hidden">', html=True)
         self.assertContains(response, '<input id="precise-end" type="hidden">', html=True)
         dashboard = self.client.get("/")
-        self.assertContains(
-            dashboard, 'class="button primary"\n           href="/ore-statistics/diamonds/"'
-        )
+        self.assertContains(dashboard, 'class="button primary"\n           href="/ore-statistics/"')
         self.assertContains(dashboard, "Open mining statistics")
 
     def test_server_rejects_invalid_dates_without_javascript(self):

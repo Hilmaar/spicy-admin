@@ -1,5 +1,9 @@
 # CoreProtect: external, authoritative, read only
 
+Phase 2B.2 extends this architecture to Ancient Debris/Netherrack and Emerald.
+See [current groups, sorting, thresholds, and the required material-signature rebuild](ore-statistics.md).
+The operational details below describe the original Phase 2B.1 foundation.
+
 ## Known production facts supplied in the specification
 
 Production runs CoreProtect **2.24.1**, MariaDB **10.3.39**, and InnoDB. MariaDB runs

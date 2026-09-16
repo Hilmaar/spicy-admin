@@ -13,12 +13,17 @@ MATERIALS = {"stone": "minecraft:stone", "deepslate": "minecraft:deepslate"}
 class RollupFixture(MiningFixture):
     stone = 781
     slate = 981
+    netherrack = 1982
 
     def setUp(self):
         super().setUp()
         self.db.executemany(
             "INSERT INTO co_material_map VALUES (?, ?)",
             zip(MATERIALS.values(), (self.stone, self.slate), strict=True),
+        )
+
+        self.db.execute(
+            "INSERT INTO co_material_map VALUES (?, ?)", ("minecraft:netherrack", self.netherrack)
         )
 
         @contextmanager
