@@ -27,19 +27,24 @@ class SQLiteReadCursor:
         self.cursor = connection.cursor()
         self.statements = []
 
-    def execute(self, sql, params):
+    def execute(self, sql, params=()):
         self.statements.append((sql, params))
         if not sql.lstrip().startswith("SELECT"):
             raise AssertionError("Analytics issued a non-SELECT statement.")
         return self.cursor.execute(
             sql.replace("%s", "?")
             .replace("STRAIGHT_JOIN", "JOIN")
-            .replace(" FORCE INDEX (`type`)", ""),
+            .replace(" FORCE INDEX (`type`)", "")
+            .replace(" FORCE INDEX (`PRIMARY`)", ""),
+            # PRIMARY is used only by bounded rollup ingestion, not report queries.
             params,
         )
 
     def fetchall(self):
         return self.cursor.fetchall()
+
+    def fetchone(self):
+        return self.cursor.fetchone()
 
 
 class MiningFixture:

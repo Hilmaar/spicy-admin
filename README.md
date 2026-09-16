@@ -4,14 +4,15 @@ Private staff portal for **spicy.is**, intended for `https://admin.spicy.is`.
 Phase 1 includes Discord login, current-role authorization, a responsive dark/light dashboard,
 documentation placeholders, and read-only CoreProtect diagnostics. Phase 2A adds natural
 diamond mining counts with time/world filters. Phase 2B adds stone/deepslate mining ratios
-and a themed date-range picker. Other ores, live activity,
+and a themed date-range picker. Phase 2B.1 adds PostgreSQL daily denominator rollups
+and separate normal/deepslate tables. Other ores, live activity,
 player investigations, punishments, and integrations remain future scope.
 
 ## Architecture
 
 ```text
 Browser → host Nginx / HTTPS → 127.0.0.1:8086 → web (Django + Gunicorn)
-                                                  ├─ postgres (portal state only)
+                                                  ├─ postgres (portal state + daily rollups)
                                                   ├─ Discord HTTPS API (identity + roles)
                                                   └─ host MariaDB (CoreProtect, SELECT-only)
 ```
@@ -19,7 +20,7 @@ Browser → host Nginx / HTTPS → 127.0.0.1:8086 → web (Django + Gunicorn)
 - Python 3.12, Django 5.2 LTS, server-rendered templates, small vanilla JavaScript,
   handwritten CSS, and WhiteNoise static delivery. No frontend build or API tier is needed.
   Django 5.2 is an [LTS release](https://www.djangoproject.com/weblog/2025/apr/02/django-52-released/).
-- PostgreSQL 16 stores users, sessions, and shared authorization state. Role results expire
+- PostgreSQL 16 stores users, sessions, daily mining rollups, and shared authorization state. Role results expire
   after 45 seconds by default, including across Gunicorn workers. Revocation takes effect
   on the next protected request after expiry; already-rendered content is not remotely erased.
 - Discord OAuth uses `identify`; a bot credential fetches individual guild membership for
@@ -298,60 +299,38 @@ Before using production counts broadly, validate UUID formats, known natural/pla
 same-second rowid ordering, and the MariaDB execution plan on a narrow range. Phase 2C and
 later work require a new scope request.
 
-## Diamond Mining Statistics (Phase 2A)
+## Mining analytics (Phase 2B.1)
 
-Open **Ore Statistics → Diamonds** at `/ore-statistics/diamonds/`. Admin and Minecraft
-Overlord roles receive `minecraft.analytics` through the existing permission service.
-The page shows Player / Diamond Ore / Deepslate Diamond Ore / Total, ordered by descending
-total with deterministic name/UUID ties. It does not assign suspicion or cheating scores.
+Open **Ore Statistics / Diamonds** at `/ore-statistics/diamonds/`. Access still requires
+`minecraft.analytics`. **All time / All worlds remains the default and primary view.**
+Natural diamond counts retain the strict historical player-placement exclusion in CoreProtect.
+Stone/deepslate counts intentionally include previously placed blocks when their breaks qualify.
 
-Default filters are **All time / All worlds**. Quick ranges are 24 hours, 7 days, and 30 days.
-Custom ranges require both bounds in UTC (start inclusive, end exclusive). Choose Custom
-range when filling the date fields. Date-only query values mean midnight; explicit offsets
-normalize to UTC. All filters apply to candidate breaks; older player placements at the
-same location/material still exclude a break. Same-second events order by rowid.
+High-volume denominator scans exceeded production timeouts. Denominators now use compact
+PostgreSQL daily aggregates, maintained by `sync_mining_analytics`. All Time never falls back
+to a live full-history denominator scan, even before initialization. Exact partial-day ranges
+combine complete PostgreSQL days with at most two CoreProtect windows shorter than 24 hours.
+CoreProtect remains read-only; its schema, indexes, and timeouts are unchanged.
 
-Results and dynamic world choices are cached for **45 seconds per Gunicorn process** using
-LocMem. The page displays the exact bounds and timestamp of its cached query. CoreProtect
-failures produce a distinct unavailable state; valid empty reports are labelled separately.
-Authorization is always checked before cache access. No new environment variables, database
-migrations, dependencies, services, or infrastructure changes are needed for Phase 2A.
+Two independently sorted tables show normal diamonds versus stone, and deepslate diamonds
+versus deepslate. Each shows Player, target count, base count, targets per 1,000 base blocks,
+and base blocks per target. Only natural miners in that layer appear. Zero divisors show a
+dash; fewer than 1,000 corresponding base blocks receives a neutral Small sample label.
 
-The regular test command includes direct SQL semantic tests against synthetic SQLite
-fixtures; no real CoreProtect connection is required. This does not verify MariaDB query
-plans or runtime performance. Phase 2B adds denominator counts/ratios as described below.
-Other ores, background aggregation, and PostgreSQL event copies remain deliberately deferred.
+The combined UTC calendar and radial 24-hour clock retain their whole-day defaults,
+inclusive-start/exclusive-end semantics, keyboard/touch controls, Cancel behavior, and
+non-JavaScript fallback. Both tables have independent sticky headers and support both themes.
 
-## Mining ratios and analytics UX (Phase 2B)
+**This phase adds a portal PostgreSQL migration and requires an initial sync.** Until it
+finishes, ratios are unavailable. Freshness is displayed, with a warning after 15 minutes
+or a failed sync; data older than 24 hours becomes unavailable. Successful complete reports
+retain their 45-second per-process cache, keyed additionally by sync generation.
 
-Diamonds now include stone/deepslate counts, total base blocks, diamonds per 1,000 base
-blocks, base blocks per diamond, and layer-specific ratios. Diamond ores retain strict
-natural-placement exclusion. **Stone/deepslate intentionally include previously placed
-blocks** when their breaks otherwise qualify. Only players with at least one natural diamond break appear; denominator counts merge by UUID.
-Zero divisors show a dash; fewer than 1,000 base blocks receives a muted Small sample label.
-There are no cheating scores or accusation thresholds.
-
-A combined UTC calendar replaces native date/time controls when JavaScript is available.
-Select start/end dates and Apply range; the final date is included in full using next-day
-midnight as exclusive end. Expand Adjust precise times for a themed radial 24-hour clock. Cancel/Escape
-discards edits. Labelled text fields remain available without JavaScript. Quick presets
-are unchanged. Table headers stay visible while scrolling within the table, and the
-dashboard has an Open mining statistics primary button.
-
-The implementation adds no runtime dependencies, configuration variables, migrations, or
-infrastructure. Complete reports remain cached for 45 seconds per worker. Both aggregates
-use identical filter bounds; either failure produces the generic unavailable state.
-Read [the query, ratio, and EXPLAIN documentation](docs/coreprotect.md#phase-2b-base-block-samples-ratios-and-reusable-groups)
-before trusting production performance, particularly all-time denominator scans.
-See [Phase 2B verification](docs/phase-2b-verification.md) for test results and remaining
-production assumptions.
-
-Denominator queries force the existing CoreProtect `type` index, based on the supplied
-production EXPLAIN results. Natural target queries are unchanged. **All time remains the
-default and primary admin view**; no timeouts or database indexes were changed.
-
-The denominator query now groups events by CoreProtect user ID before joining player
-records, then combines totals by normalized UUID. It retains the existing `type` index
-hint and 3-second timeout; live MariaDB EXPLAIN/timing validation is still required.
-The precise-time clock changes calendar drafts only. Whole-day end includes the complete
-last date; a chosen clock end time is exclusive. Cancel preserves the previous selection.
+Read [the rollup operations and validation guide](docs/mining-rollups.md) before production
+use. It covers migration order, restart-safe backfill, incremental sync, recent rollback
+reconciliation, manual rebuilds, and a recommended future five-minute cadence. No scheduler,
+new dependencies, environment variables, infrastructure, or later ore features are added.
+Historical checks remain in [Phase 2A verification](docs/phase-2a-verification.md) and
+[Phase 2B verification](docs/phase-2b-verification.md).
+Current checks and the repeatable browser harness are documented in
+[Phase 2B.1 verification](docs/phase-2b1-verification.md).

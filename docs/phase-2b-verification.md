@@ -1,5 +1,8 @@
 # Phase 2B verification
 
+Historical Phase 2B record. Full-range denominator requests and the combined table are
+superseded by [Phase 2B.1](mining-rollups.md); see its [verification record](phase-2b1-verification.md).
+
 ## Derived denominator query and radial clock: current verification
 
 All **142 Django tests passed**, including the complete earlier suite and new contracts
@@ -116,7 +119,7 @@ transactions. Concurrent source changes can occur between them. No partial repor
 cached or shown on failure. Successful reports use 45-second per-process caching.
 
 Before relying on broad/all-time production ratios, follow the
-[read-only denominator EXPLAIN procedure](coreprotect.md#read-only-denominator-explain-and-performance-validation).
+[read-only denominator EXPLAIN procedure](coreprotect.md#read-only-performance-validation).
 Check material mappings, known placed-base versus natural-target samples, the `(type,time)`
 candidate index and user primary-key lookups, and representative timings within existing
 limits. Do not automatically increase timeouts or add indexes/workers.

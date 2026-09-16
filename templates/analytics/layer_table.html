@@ -1,0 +1,36 @@
+{% load humanize mining %}
+<section class="card table-card" aria-labelledby="{{ table_id }}-heading">
+  <div class="card-heading">
+    <h2 id="{{ table_id }}-heading">{{ heading }}</h2>
+  </div>
+  {% if rows %}
+    <div class="table-scroll statistics-scroll"
+         role="region"
+         aria-label="{{ heading }} counts"
+         tabindex="0">
+      <table class="statistics-table layer-table" id="{{ table_id }}">
+        <caption class="sr-only">{{ heading }}, sorted by natural ore count descending, then player name and UUID.</caption>
+        <thead>
+          <tr>
+            <th scope="col">Player</th>
+            <th scope="col" class="number" aria-sort="descending">{{ target_label }}</th>
+            <th scope="col" class="number">{{ base_label }}</th>
+            <th scope="col" class="number">{{ rate_label }}</th>
+            <th scope="col" class="number">{{ inverse_label }}</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for row in rows %}
+            <tr>
+              <th scope="row">{{ row.player_name }}{% if row.small_sample %}<span class="sample-badge">Small sample</span>{% endif %}</th>
+              <td class="number mono accent-text">{{ row.target_count|intcomma }}</td>
+              <td class="number mono">{{ row.base_count|intcomma }}</td>
+              <td class="number mono {% if row.small_sample %}ratio-muted{% endif %}">{{ row.per_1000|mining_ratio }}</td>
+              <td class="number mono {% if row.small_sample %}ratio-muted{% endif %}">{{ row.per_target|mining_ratio }}</td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  {% else %}<p class="analytics-empty">No qualifying natural breaks matched this layer and range.</p>{% endif %}
+</section>

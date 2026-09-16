@@ -3,6 +3,7 @@
 import re
 from contextlib import closing, contextmanager
 from dataclasses import dataclass
+from datetime import UTC, date, datetime, time, timedelta
 from math import ceil
 from typing import Protocol
 
@@ -17,6 +18,7 @@ from .mining import (
     OreGroup,
     player_record_predicate,
 )
+from .rollup import MiningBatch, MiningBucket
 
 
 class CoreProtectUnavailable(Exception):
@@ -39,6 +41,9 @@ class CoreProtectRepository(Protocol):
     def get_denominator_stats(
         self, query: DiamondQuery, group: OreGroup
     ) -> tuple[MaterialBreakRow, ...]: ...
+    def mining_high_water(self) -> int: ...
+    def read_mining_batch(self, after, through, batch_size, materials) -> MiningBatch: ...
+    def read_mining_day(self, day, through, materials) -> tuple[MiningBucket, ...]: ...
 
 
 def configured():
@@ -168,6 +173,94 @@ class MariaDBCoreProtectRepository:
                 )
                 for row in cursor.fetchall()
             )
+
+    def mining_high_water(self):
+        with self._cursor() as cursor:
+            cursor.execute(f"SELECT COALESCE(MAX(rowid), 0) FROM `{self.prefix}block`")
+            return int(cursor.fetchone()[0])
+
+    def _rollup_material_ids(self, cursor, materials):
+        if not materials or len(set(materials.values())) != len(materials):
+            raise CoreProtectUnavailable("Invalid rollup materials.")
+        placeholders = ", ".join("%s" for _ in materials)
+        cursor.execute(
+            f"SELECT material, id FROM `{self.prefix}material_map` "
+            f"WHERE material IN ({placeholders})",
+            tuple(materials.values()),
+        )
+        rows = cursor.fetchall()
+        resolved = {str(name): int(identifier) for name, identifier in rows}
+        if (
+            len(rows) != len(materials)
+            or set(resolved) != set(materials.values())
+            or len(set(resolved.values())) != len(materials)
+        ):
+            raise CoreProtectUnavailable("Rollup material mappings unavailable.")
+        return {resolved[name]: key for key, name in materials.items()}
+
+    def read_mining_batch(self, after, through, batch_size, materials):
+        if not 0 <= after <= through or not 1 <= batch_size <= 50000:
+            raise ValueError("Invalid mining batch bounds.")
+        with self._cursor() as cursor:
+            ids = self._rollup_material_ids(cursor, materials)
+            # Bound work by actual primary-key rows, including irrelevant events and gaps.
+            cursor.execute(
+                f"SELECT rowid FROM `{self.prefix}block` WHERE rowid > %s AND rowid <= %s "
+                "ORDER BY rowid LIMIT %s",
+                (after, through, batch_size),
+            )
+            rowids = cursor.fetchall()
+            end = int(rowids[-1][0]) if len(rowids) == batch_size else through
+            buckets = self._read_rollup_counts(
+                cursor, ids, "b.rowid > %s AND b.rowid <= %s", (after, end), "PRIMARY"
+            )
+            return MiningBatch(end, buckets)
+
+    def read_mining_day(self, day, through, materials):
+        start = datetime.combine(day, time.min, UTC)
+        end = start + timedelta(days=1)
+        with self._cursor() as cursor:
+            ids = self._rollup_material_ids(cursor, materials)
+            return self._read_rollup_counts(
+                cursor,
+                ids,
+                "b.time >= %s AND b.time < %s AND b.rowid <= %s",
+                (int(start.timestamp()), int(end.timestamp()), through),
+                "type",
+            )
+
+    def _read_rollup_counts(self, cursor, ids, bounds, parameters, index):
+        # All fragments are private constants; only values come from callers/mappings.
+        player_sql, player_params = player_record_predicate("u")
+        placeholders = ", ".join("%s" for _ in ids)
+        sql = f"""
+            SELECT base.day_number, LOWER(REPLACE(u.uuid, '-', '')) AS player_uuid,
+                   base.wid, base.type, SUM(base.break_count)
+            FROM (
+                SELECT FLOOR(b.time / 86400) AS day_number, b.user, b.wid, b.type,
+                       COUNT(b.rowid) AS break_count
+                FROM `{self.prefix}block` b FORCE INDEX (`{index}`)
+                WHERE {bounds} AND b.type IN ({placeholders})
+                  AND b.action = 0 AND b.rolled_back = 0
+                GROUP BY FLOOR(b.time / 86400), b.user, b.wid, b.type
+                ORDER BY NULL
+            ) base
+            STRAIGHT_JOIN `{self.prefix}user` u ON u.rowid = base.user
+            WHERE {player_sql}
+            GROUP BY base.day_number, LOWER(REPLACE(u.uuid, '-', '')), base.wid, base.type
+            ORDER BY NULL
+        """
+        cursor.execute(sql, tuple(parameters) + tuple(ids) + player_params)
+        return tuple(
+            MiningBucket(
+                date(1970, 1, 1) + timedelta(days=int(day)),
+                str(uuid),
+                int(world),
+                ids[int(material)],
+                int(count),
+            )
+            for day, uuid, world, material, count in cursor.fetchall()
+        )
 
     def _diamond_statement(self, query, diamond, deepslate):
         return self._aggregate_statement(query, (diamond, deepslate), natural_only=True)

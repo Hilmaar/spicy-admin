@@ -2,7 +2,8 @@ from decimal import Decimal
 from unittest.mock import patch
 
 from django.core.cache import cache
-from django.test import SimpleTestCase, TestCase
+from django.db import DatabaseError
+from django.test import TestCase
 
 from accounts.discord import Membership
 from accounts.models import User
@@ -10,11 +11,14 @@ from coreprotect.mining import DIAMONDS, SMALL_SAMPLE_BASE_BLOCKS, DiamondStatsR
 from coreprotect.repository import CoreProtectUnavailable, World
 
 from .forms import DiamondFiltersForm
+from .models import MiningAnalyticsSyncState, MiningMaterialDaily
+from .rollups import RollupUnavailable
 from .services import get_report, merge_diamond_rows
 from .templatetags.mining import mining_ratio
+from .test_rollups import ready_state
 
 
-class RatioTests(SimpleTestCase):
+class RatioTests(TestCase):
     def test_only_target_players_with_normalized_denominator_merge(self):
         rows = merge_diamond_rows(
             (DiamondStatsRow("a" * 32, "Alice", 2, 3), DiamondStatsRow("b" * 32, "Bob", 1, 0)),
@@ -87,10 +91,13 @@ class RatioTests(SimpleTestCase):
     def test_same_bounds_and_atomic_success_cache(self, factory):
         cache.clear()
         self.addCleanup(cache.clear)
+        ready_state()
         repo = factory.return_value
         repo.get_diamond_stats.return_value = (DiamondStatsRow("a" * 32, "Alice", 1, 0),)
         repo.get_denominator_stats.side_effect = CoreProtectUnavailable("secret")
-        form = DiamondFiltersForm({"range": "24h"}, worlds=())
+        form = DiamondFiltersForm(
+            {"range": "custom", "start": "2026-09-01T12:00", "end": "2026-09-01T12:30"}, worlds=()
+        )
         with patch("analytics.services.cache.set") as store:
             with self.assertRaises(CoreProtectUnavailable):
                 get_report(form)
@@ -109,6 +116,7 @@ class RatioPageTests(TestCase):
     def setUp(self):
         cache.clear()
         self.addCleanup(cache.clear)
+        ready_state()
         user = User.objects.create_user("991", username="Staff")
         self.client.force_login(user, backend="accounts.backends.DiscordSessionBackend")
         roles = patch(
@@ -121,6 +129,13 @@ class RatioPageTests(TestCase):
         self.addCleanup(factory.stop)
         self.repo.list_worlds.return_value = (World(87, "fixture"),)
         self.repo.get_diamond_stats.return_value = (DiamondStatsRow("a" * 32, "Alice", 1, 0),)
+        MiningMaterialDaily.objects.create(
+            date="2026-09-01",
+            player_uuid="a" * 32,
+            world_id=87,
+            material_key="stone",
+            break_count=10,
+        )
         self.repo.get_denominator_stats.return_value = (
             MaterialBreakRow("a" * 32, "Alice", (10, 0)),
         )
@@ -130,13 +145,43 @@ class RatioPageTests(TestCase):
         for text in (
             "Alice",
             "Small sample",
-            "Total Base Blocks",
+            "Stone",
             "Diamonds per 1,000",
-            "—",
             "100.00",
         ):
             self.assertContains(response, text)
         self.assertNotContains(response, "No natural diamond mining events matched")
+
+    def test_two_tables_have_independent_membership_and_no_combined_columns(self):
+        self.repo.get_diamond_stats.return_value = (
+            DiamondStatsRow("a" * 32, "NormalOnly", 1, 0),
+            DiamondStatsRow("b" * 32, "DeepOnly", 0, 2),
+            DiamondStatsRow("c" * 32, "Both", 3, 4),
+        )
+        response = self.client.get("/ore-statistics/diamonds/")
+        html = response.content.decode()
+        normal, deep = html.split('id="deepslate-diamonds-heading"')
+        normal = normal.split('id="normal-diamonds-heading"')[1]
+        self.assertIn("NormalOnly", normal)
+        self.assertNotIn("DeepOnly", normal)
+        self.assertIn("DeepOnly", deep)
+        self.assertNotIn("NormalOnly", deep)
+        self.assertIn("Both", normal)
+        self.assertIn("Both", deep)
+        self.assertEqual(html.count('scope="col"'), 10)
+        self.assertNotContains(response, "Total Base Blocks")
+        self.repo.get_denominator_stats.assert_not_called()
+
+    def test_uninitialized_and_stale_states_never_use_live_all_time_fallback(self):
+        MiningAnalyticsSyncState.objects.update(initialized=False)
+        response = self.client.get("/ore-statistics/diamonds/")
+        self.assertContains(response, "are initializing", status_code=503)
+        self.assertNotContains(response, 'class="statistics-table', status_code=503)
+        self.repo.get_denominator_stats.assert_not_called()
+        MiningAnalyticsSyncState.objects.update(initialized=True, last_error="Safe error")
+        response = self.client.get("/ore-statistics/diamonds/")
+        self.assertContains(response, "Base-block analytics may be stale")
+        self.assertContains(response, "Recent rollback reconciliation:")
 
     def test_denominator_only_results_show_empty_natural_mining_state(self):
         self.repo.get_diamond_stats.return_value = ()
@@ -155,11 +200,23 @@ class RatioPageTests(TestCase):
         self.assertNotContains(response, "BaseOnlyBob")
 
     def test_denominator_failure_is_generic_not_partial_or_empty(self):
-        self.repo.get_denominator_stats.side_effect = CoreProtectUnavailable("SQL host-secret")
-        response = self.client.get("/ore-statistics/diamonds/")
-        self.assertContains(response, "CoreProtect analytics unavailable", status_code=503)
-        self.assertNotContains(response, "host-secret", status_code=503)
+        with patch(
+            "analytics.services.rollups.read_snapshot",
+            side_effect=RollupUnavailable("Base-block analytics are unavailable."),
+        ):
+            response = self.client.get("/ore-statistics/diamonds/")
+        self.assertContains(response, "Base-block analytics unavailable", status_code=503)
         self.assertNotContains(response, "No natural diamond", status_code=503)
+        self.repo.get_denominator_stats.assert_not_called()
+
+    def test_postgres_error_is_generic_and_never_triggers_live_fallback(self):
+        with patch(
+            "analytics.services.rollups.read_snapshot", side_effect=DatabaseError("password=secret")
+        ):
+            response = self.client.get("/ore-statistics/diamonds/")
+        self.assertContains(response, "Base-block analytics unavailable", status_code=503)
+        self.assertNotContains(response, "password=secret", status_code=503)
+        self.repo.get_denominator_stats.assert_not_called()
 
     def test_picker_sticky_structure_and_primary_dashboard_action(self):
         response = self.client.get("/ore-statistics/diamonds/")

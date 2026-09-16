@@ -1,6 +1,6 @@
 # spicy-admin invariants
 
-Phase 1, Phase 2A, and Phase 2B (diamond ratios and analytics UX) are implemented. Do not implement Phase 2C
+Phase 1, Phase 2A, and Phase 2B.1 (daily denominator rollups and separate diamond tables) are implemented. Do not implement Phase 2C
 or later scope unless explicitly asked.
 
 1. **CoreProtect is READ ONLY.** Never write data, change schema/indexes, run migrations,
@@ -38,7 +38,8 @@ or later scope unless explicitly asked.
 - Merge target/base aggregates by normalized UUID using identical time/world query bounds;
   cache only complete successful reports. Display only players with positive natural-diamond
   totals; denominator-only players never create report rows.
-- Denominator queries use FORCE INDEX (`type`) on the existing CoreProtect index; natural
+- Live boundary/reconciliation denominator queries use FORCE INDEX (`type`); rowid batches
+  use PRIMARY. These are existing CoreProtect indexes; natural
   target queries retain their original index selection. All time remains the default.
 - Denominators aggregate block events by `b.user` before joining/filtering `co_user`, then
   combine counts by normalized UUID. Do not restore per-block UUID/REGEXP checks or totals/sorts.
@@ -46,7 +47,12 @@ or later scope unless explicitly asked.
   retain inclusive-start/exclusive-end semantics. Server validation remains authoritative.
 - The radial clock edits calendar drafts only. Whole-day end remains next-day midnight;
   explicitly chosen end times are exclusive. Clock Cancel and calendar Cancel discard their drafts.
-- Other ore pages, scores, workers, rollups, and event copies remain out of scope.
+- Denominators use portal PostgreSQL daily rollups; only partial boundaries shorter than
+  24h may query CoreProtect during reports. All Time never falls back to a live base scan.
+- Sync uses a PostgreSQL advisory lock, atomic batch/watermark commits, and recent UTC-day
+  replacement capped at the committed watermark. Read docs/mining-rollups.md before changes.
+- Show only positive natural miners in each independently sorted layer table.
+- Other ore pages, scores, worker frameworks, and raw event copies remain out of scope.
 - Only PostgreSQL belongs in runtime `DATABASES`; SQLite is isolated to automated tests.
 - Never log tokens, secrets, API payloads, or OAuth callback query strings.
 - Run `python manage.py test --settings=config.settings.test`, `ruff check .`, and

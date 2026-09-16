@@ -87,7 +87,8 @@ underscores. Only fixed SELECT statements and session/transaction controls exist
 The database credential is the final enforcement boundary: a dedicated SELECT-only
 MariaDB account is mandatory. Never use Minecraft's writer credentials. Do not INSERT,
 UPDATE, DELETE, ALTER, CREATE, DROP, run migrations, add indexes, or perform CoreProtect
-rollbacks. No CoreProtect data is copied into PostgreSQL.
+rollbacks. Only compact daily denominator aggregates are stored in portal PostgreSQL;
+raw CoreProtect events are never copied. See [Phase 2B.1](mining-rollups.md).
 
 Dashboard connectivity uses `SELECT 1`, cached for 60 seconds per worker. It does not
 prove mapping-schema compatibility; Admin-only diagnostics checks that. Errors exclude
@@ -108,36 +109,28 @@ no `COUNT(*)` or `co_block` scan in diagnostics.
 4. Log in with the configured Admin role and visit `/diagnostics/`. Confirm the recorded
    version, worlds, and material lookup. A missing material differs from connection failure.
 
-## Future plans — not implemented
+## Current denominator architecture and deferred work
 
-Rare-ore candidates can use `(type, time)`, with prior-placement checks using
-`(wid, x, z, time)` and full y/material constraints. Verify plans with narrow, bounded
-queries. Stone, deepslate, and netherrack may have millions of events. Phase 2B directly
-aggregates stone/deepslate with a short successful-report cache; validate performance
-before considering background aggregation. Never fetch unused blobs.
-
-Later work may use a `co_block.rowid` watermark, compact derived PostgreSQL aggregates,
-periodic processing, recent-event reconciliation, and a manual rebuild. Monotonic IDs
-alone do not handle rollback changes to old rows; reconciliation is essential. Do not
-copy the entire block table. Target/comparison groups must use material names and
-dynamic worlds. Player pages could later reference `co_session`, `co_chat`, `co_command`,
-`co_container`, and `co_item` through semantic services.
-
-No workers, other-ore analytics, veins, suspicion scores, guilt
-judgements, live feed, ClickHouse, DuckDB, or CoreProtect migration are implemented.
+Phase 2B.1 uses a rowid watermark and compact PostgreSQL daily aggregates for stone/deepslate.
+Recent UTC days are reconciled to handle rollback changes. See [the operational guide](mining-rollups.md)
+for the sync reader, bootstrap, concurrency, exact partial-day strategy, and production checks.
+No other ore pages, scores, live feeds, integrations, worker frameworks, or raw event copies
+are implemented. Natural diamonds retain the direct query below.
 
 ## Phase 2A: direct diamond analytics
 
 `/ore-statistics/diamonds/` requires the existing `minecraft.analytics` permission.
-It shows diamond ore, deepslate diamond ore, and total natural breaks per player.
+It now shows separate normal/stone and deepslate/deepslate tables with layer-specific ratios.
 Counts represent broken ore blocks, not item drops, fortune yields, or evidence of cheating.
-Only compact aggregate results are held in memory; PostgreSQL receives no CoreProtect data.
+Natural target results are held only in the short report cache; denominator daily totals
+are persisted in portal PostgreSQL.
 
 ### Query strategy
 
 The Phase 2A target aggregate uses two SELECTs: both material mappings and one aggregate.
-Phase 2B adds two denominator SELECTs; with world mappings, the full uncached page uses
-five SELECTs. Each repository call retains the existing
+All Time and whole-day reports add no live denominator SELECTs. Partial-day reports add
+two SELECTs per boundary (material mapping and aggregate), for at most two boundaries.
+World mappings are separately cached. Each repository call retains the existing
 READ ONLY transaction, session statement limit, socket timeouts, rollback, and close.
 The material lookup and aggregate use one connection/snapshot. World mappings are a
 separate small query. Session control statements are in addition to those SELECTs.
@@ -199,7 +192,7 @@ expires. The existing 1,000-world safety limit is retained. Bounds filter **brea
 World mappings and successful aggregate reports use the existing LocMem cache for 45 seconds.
 This is per-process, not shared between Gunicorn workers. Concurrent misses may issue duplicate
 queries; there is no worker, Redis dependency, or distributed cache. Keys contain the time
-selection, canonical custom bounds, and world ID, hashed to a fixed length, with no secrets.
+selection, canonical custom bounds, world ID, and sync generation, hashed to a fixed length, with no secrets.
 Relative selections reuse their entry during its TTL instead of generating a new key every
 second. The report retains the original bounds and query timestamp for honest UI labels.
 
@@ -229,71 +222,39 @@ queries analytics. Existing CoreProtect diagnostics and dashboard status retain 
 4. Compare factual counts against small known CoreProtect samples, then test 24h/7d/30d/all
    and world filters within the existing timeout. A large all-time query may time out; this
    must show unavailable, never silently truncated or partial results. Review the plan rather
-   than automatically increasing timeouts, changing schema, or adding background processing.
+   than automatically increasing timeouts or changing CoreProtect schema.
 5. Confirm Admin/Overlord access, Patron/member denial, role revocation even with a warm
    cache, and continued documentation access during a CoreProtect outage. Do outage checks
    in an isolated validation environment, not by stopping production MariaDB.
 
-## Phase 2B: base-block samples, ratios, and reusable groups
+## Phase 2B.1 denominator queries and ratios
 
-`OreGroup` in `coreprotect/mining.py` defines a slug, target material names, and denominator
-material names. Only `DIAMONDS` is configured. The repository's shared aggregate builder
-supports any code-defined number of materials and an explicit `natural_only` policy.
-`get_diamond_stats` preserves its semantic API; `get_denominator_stats(query, group)` uses
-the same builder without placement exclusion. Views contain no SQL. No additional ore
-pages or infrastructure are introduced.
+The former full-range denominator request is superseded by
+[PostgreSQL rollups and exact short boundaries](mining-rollups.md). Production All Time and
+30-day scans exceeded the existing timeout even after forcing `type` and aggregating
+per CoreProtect user first. This is why reports no longer execute those full-range scans.
 
-### Denominator semantics and query
+For a live partial boundary, resolve both material names dynamically, then aggregate
+`action=0`, `rolled_back=0` block events by `b.user` inside a derived table with the existing
+`FORCE INDEX (type)`. Apply time/world bounds there. Join the reduced totals to `co_user`,
+apply the central real-player predicate, and sum by normalized UUID. Both groups use
+`ORDER BY NULL`; there is no placement exclusion, denominator ranking, total count, limit,
+or per-player query. UUID/name validation is performed on user aggregates, not each block.
+The natural-target SQL is unchanged and has no forced index.
 
-Resolve `minecraft:stone` and `minecraft:deepslate` together on each uncached denominator
-request. Both must map unambiguously to distinct numeric IDs. Aggregate `action=0`,
-`rolled_back=0` breaks matching those IDs, the real-player predicate, and the selected
-break-time/world bounds. First compute conditional sums grouped by `b.user` in a derived
-table using the existing `FORCE INDEX(type)`. Only then join those per-user totals to
-`co_user` and apply the centralized real-player predicate. The outer aggregate sums counts
-across user IDs sharing a normalized UUID and retains `MIN(user)` for the display name. There is **no `NOT EXISTS`**, no placement join,
-no blob selection, no per-player query, and no row limit/truncation.
+The sync reader uses a bounded primary-key rowid batch, groups day/user/world/material
+before the same player join, and stores compact day/normalized-UUID/world/stable-material
+counts. Reconciliation uses the existing `type` index with one UTC day and a watermark cap.
+All SQL stays in the repository, parameterized, under the existing read-only transaction
+and three-second limits. No material/world IDs are hardcoded or stored as semantic material keys.
 
-Stone/deepslate breaks **may include previously player-placed blocks by design**. They
-are a mining sample, not strict natural discoveries. Diamond target ores still apply
-the full historical placement rule, including `(time,rowid)` ordering and placements
-before the reporting window. This deliberate asymmetry must not be silently changed.
-
-The service computes one `DiamondQuery` and passes it unchanged to both aggregates.
-They use separate short-lived read-only transactions, so they share filter bounds but
-not a database snapshot. Concurrent CoreProtect writes/rollback changes can be observed
-between reads. Neither result is displayed or cached if either query fails. Statement
-and socket timeouts remain unchanged; cumulative latency includes both reads.
-
-### Merging and ratios
-
-`merge_diamond_rows` starts with target results and attaches denominator counts by lowercase
-UUID with hyphens removed. Only players with positive qualifying natural-diamond totals
-appear. Denominator-only players never create rows; missing denominator counts are zero.
-Duplicate normalized identities are summed. Display names use the lexicographically
-smallest returned name across both sources; this may be historical. Ordering is total
-natural diamonds descending, then Python string player-name order, then UUID. Database
-collation still determines each aggregate's `MIN(user)` name.
-
-| Value | Formula |
-| --- | --- |
-| Total Diamonds | diamond ore + deepslate diamond ore |
-| Total Base Blocks | stone + deepslate |
-| Diamonds per 1,000 Base Blocks | total diamonds / total base blocks × 1,000 |
-| Base Blocks per Diamond | total base blocks / total diamonds |
-| Stone per normal Diamond Ore | stone / diamond ore |
-| Deepslate per Deepslate Diamond Ore | deepslate / deepslate diamond ore |
-
-Ratios use Decimal arithmetic and display two decimal places; zero divisors show `—`.
-A valid zero ratio displays `0.00`. Raw integer counts are unchanged and never hidden.
-`SMALL_SAMPLE_BASE_BLOCKS = 1000` is the centralized code setting: totals below it receive
-a muted Small sample badge and subdued ratios. It is context, not an accusation threshold.
-High ratios or counts do not establish cheating; there are no scores or automated flags.
-
-Successful complete reports retain the 45-second per-process LocMem cache. The report-key
-version is now `diamonds:v3` to isolate the corrected target-only row selection. Presets, exact canonical UTC bounds,
-and world identity remain distinct; failures are never cached as empty results. The original
-query bounds/time remain attached to each report. Authorization precedes cache access.
+Report merging starts from natural miners, normalizes UUIDs, and attaches base counts.
+PostgreSQL contributes no names. Existing live aggregate names may be historical; partial
+boundary names retain the existing minimum-name merge behavior. Each layer independently
+filters positive target counts and orders by target descending, name ascending, UUID ascending.
+Decimal ratios use that layer's target/base values, display two decimals, and show a dash
+for a zero divisor. A zero numerator is `0.00`. Small sample means fewer than 1,000 base
+blocks in that layer; it is context, never a cheating accusation.
 
 ### Calendar and table behavior
 
@@ -315,86 +276,24 @@ With JavaScript unavailable, labelled UTC timestamp fields remain usable; their 
 always exclusive. Quick presets retain their existing bounds and clear custom inputs
 when selected in the enhanced UI. All time is still the default and has no fixed cutoff.
 
-The statistics table uses a bounded `65vh` region with horizontal and vertical scrolling.
+Each statistics table uses a bounded `65vh` region with horizontal and vertical scrolling.
 Header cells use `position: sticky; top: 0`, opaque theme backgrounds, and z-index 2.
 The portal topbar is not fixed, so no viewport-header offset is needed inside this region.
 Columns stay aligned during both scroll directions. The dashboard uses the existing green
 primary button, labelled Open mining statistics.
 
-### Read-only denominator EXPLAIN and performance validation
+### Read-only performance validation
 
-No live MariaDB performance claim follows from the automated SQLite semantic tests.
-Stone/deepslate can comprise millions of rows. Even without placement lookups, all-time
-aggregation may exceed the existing timeout and correctly return unavailable.
-
-Using the existing SELECT-only account in a reviewed Django shell:
-
-1. Instantiate `MariaDBCoreProtectRepository` and resolve both names from
-   `DIAMONDS.denominator_materials` via `resolve_material`; stop if either is missing.
-2. Construct `DiamondQuery` with a narrow UTC range and a dynamically resolved world ID.
-3. Build `sql, params = repo._aggregate_statement(query, ids, natural_only=False)` where
-   `ids` follows the material-name order. These helpers accept internal code-defined groups.
-4. Inside `with repo._cursor() as cursor`, run `cursor.execute("EXPLAIN " + sql, params)`
-   and inspect `cursor.fetchall()`. Do not print credentials, query parameter values, or
-   full connection settings. Expect block candidates to use `(type,time)` and user lookups
-   to use the primary key. Confirm the denominator selects the existing `type` index,
-   forced by the query, and inspect row estimates. The natural-target query has no index hint.
-5. Compare small known samples, measure elapsed time for bounded ranges, then carefully
-   test broader ranges/all-time under the existing limits. Inspect both target and base
-   plans. Do not substitute `ANALYZE` for `EXPLAIN`: it executes the query.
-
-Do not raise production timeouts automatically, add indexes, truncate reports, or add
-rollups/workers to make a slow query appear successful. Benchmark before proposing a
-separately authorized Phase 2C+ approach. Other ores, alerts/scores, player pages, live
-feeds, integrations, background aggregation, and PostgreSQL copies remain deferred.
-
-
-### Focused Phase 2B production corrections
-
-For `natural_only=False`, the block table uses ``FORCE INDEX (`type`)`` (with the index
-identifier quoted in SQL). This selects the existing CoreProtect index named `type`;
-it does not create or alter an index. The hint is fixed application SQL, not user input.
-Natural target-ore queries retain their prior SQL semantics and have no index hint.
-
-The user supplied production EXPLAIN evidence for a 30-day plus world filter: choosing
-`wid` estimated 12,091,961 rows, while forcing `type` estimated 2,285,666. These are
-optimizer estimates, not measured execution times, and were not independently reproduced
-locally. Validate representative and all-time plans on production with the read-only
-procedure above. A compatible CoreProtect database must have the existing index named
-`type`; failure to use it is surfaced through the generic unavailable state.
-
-All time remains the default and intended primary admin view. The report includes only
-players with at least one qualifying natural diamond ore break in the selected range/world.
-Stone/deepslate counts still include previously placed blocks and merge by normalized UUID
-for those players. Denominator-only results produce the normal empty natural-mining state.
-No query timeouts, schema, indexes, or infrastructure were changed.
-
-
-### Denominator derived-table optimization
-
-The existing index hint alone still exceeded the 3-second limit for All Time and 30-day
-requests according to the user. Denominator SQL now has two aggregation stages:
-
-1. The inner SELECT scans only dynamically resolved base material IDs, with `action=0`,
-   `rolled_back=0`, and selected time/world bounds. It uses the existing `type` index and
-   groups conditional material sums by numeric `b.user`, without any user join or UUID check.
-2. The outer SELECT joins the reduced totals to `co_user`, applies the centralized name/UUID
-   rule, and sums them by normalized UUID so historical duplicate user IDs remain one player.
-
-Both GROUP BY stages use `ORDER BY NULL` to suppress MariaDB's implicit group ordering.
-There is no denominator `COUNT`, computed total, ranking sort, limit, or placement lookup.
-`MaterialBreakRow.counts` contains just the ordered material counts. The service still merges
-by normalized UUID, filters to natural-diamond miners, and performs the final deterministic
-report ordering. Target-ore SQL, five uncached SELECTs, cache identity/TTL, All Time default,
-read-only transactions, and statement/socket timeouts remain unchanged.
-
-Use the existing `_aggregate_statement(..., natural_only=False)` EXPLAIN procedure above.
-Inspect the inner derived-table scan using `type`, grouping/materialization cost, and the
-outer primary-key user lookup. Confirm the join/classification applies to per-user totals,
-not individual events. Compare known counts including duplicate UUID records and measure
-All Time/30-day latency on production MariaDB. Local SQLite tests establish semantics and
-SQL shape, not MariaDB materialization behavior or a guarantee of completion in 3 seconds.
-No PostgreSQL aggregates, workers, indexes, schema changes, or timeout increases are added.
+Validate bounded batch and daily reconciliation queries on production MariaDB with the
+SELECT-only account and existing limits. Local SQLite semantic fixtures cannot establish
+MariaDB materialization plans or performance. For partial boundaries, the existing
+`repo._aggregate_statement(query, ids, natural_only=False)` helper can build a narrow
+query for `EXPLAIN`; resolve IDs dynamically from `DIAMONDS.denominator_materials` first.
+Execute `EXPLAIN ` plus that fixed SQL with its original parameter tuple through
+`repo._cursor()`. Inspect the inner `type` scan and outer primary-key user lookup.
+Do not substitute `ANALYZE`, which executes the query. See the operational guide for
+backfill, incremental, reconciliation, restart, and production concurrency validation.
+No timeout increases or CoreProtect schema/index changes are authorized.
 
 ### Radial clock interaction
 

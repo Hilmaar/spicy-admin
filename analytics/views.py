@@ -1,3 +1,4 @@
+from django.db import DatabaseError
 from django.shortcuts import render
 
 from accounts.permissions import permission_required
@@ -6,6 +7,7 @@ from coreprotect.repository import CoreProtectUnavailable
 
 from . import services
 from .forms import RANGES, DiamondFiltersForm
+from .rollups import RollupUnavailable
 
 
 @permission_required("minecraft.analytics")
@@ -20,6 +22,12 @@ def diamonds(request):
         context["range_label"] = dict(RANGES)[form.cleaned_data["range"]]
         context["world_label"] = dict(form.fields["world"].choices)[form.cleaned_data["world"]]
         context["report"] = services.get_report(form)
+    except RollupUnavailable as error:
+        context["unavailable"] = True
+        context["rollup_message"] = str(error)
+    except DatabaseError:
+        context["unavailable"] = True
+        context["rollup_message"] = "Base-block analytics are unavailable. Contact a portal owner."
     except CoreProtectUnavailable:
         # No SQL, hostnames, exception details, or credentials in the public state.
         context["unavailable"] = True

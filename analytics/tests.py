@@ -13,6 +13,7 @@ from coreprotect.repository import CoreProtectUnavailable, World
 
 from .forms import DiamondFiltersForm
 from .services import CACHE_SECONDS, get_report, list_worlds
+from .test_rollups import ready_state
 
 WORLDS = (World(802, "resource_world"), World(1701, "archived_world"))
 NOW = datetime(2026, 9, 14, 12, 30, tzinfo=UTC)
@@ -113,7 +114,7 @@ class FilterTests(SimpleTestCase):
                 DiamondQuery(**kwargs)
 
 
-class CacheTests(SimpleTestCase):
+class CacheTests(TestCase):
     def setUp(self):
         cache.clear()
         self.addCleanup(cache.clear)
@@ -122,6 +123,7 @@ class CacheTests(SimpleTestCase):
         self.addCleanup(self.patcher.stop)
         self.repository = self.factory.return_value
         self.repository.get_diamond_stats.return_value = ROWS
+        ready_state()
         self.repository.get_denominator_stats.return_value = ()
         self.repository.list_worlds.return_value = list(WORLDS)
 
@@ -196,8 +198,18 @@ class CacheTests(SimpleTestCase):
         with patch("analytics.services.cache.set") as store:
             get_report(self.form({"range": "7d"}))
         key, report = store.call_args.args
-        self.assertTrue(key.startswith("diamonds:v3:report:"))
-        self.assertEqual(set(vars(report)), {"query", "rows", "checked_at"})
+        self.assertTrue(key.startswith("diamonds:v4:report:"))
+        self.assertEqual(
+            set(vars(report)),
+            {
+                "query",
+                "rows",
+                "checked_at",
+                "base_updated_at",
+                "base_reconciled_at",
+                "base_warning",
+            },
+        )
         self.assertEqual(store.call_args.kwargs, {"timeout": 45})
 
     def test_cache_read_write_failure_falls_back_to_fresh_query(self):
@@ -236,6 +248,7 @@ class DiamondPageTests(TestCase):
         self.addCleanup(self.repo_patch.stop)
         self.repository.list_worlds.return_value = WORLDS
         self.repository.get_diamond_stats.return_value = ROWS
+        ready_state()
         self.repository.get_denominator_stats.return_value = ()
         self.member_patch = patch(
             "accounts.permissions.fetch_membership", return_value=Membership(True, ("200",))
@@ -260,7 +273,8 @@ class DiamondPageTests(TestCase):
                 self.assertContains(response, "Diamond Mining Statistics")
                 self.assertContains(response, "1,234")
                 self.assertContains(response, "5,678")
-                self.assertContains(response, "6,912")
+                self.assertContains(response, "Normal Diamond Mining")
+                self.assertContains(response, "Deepslate Diamond Mining")
 
     def test_patron_and_ordinary_member_cannot_access(self):
         self.login()

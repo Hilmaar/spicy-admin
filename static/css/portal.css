@@ -1493,12 +1493,12 @@ tbody tr:hover {
   min-width: 540px;
 }
 
-.diamond-table .number {
+.statistics-table .number {
   text-align: right;
   font-variant-numeric: tabular-nums;
 }
 
-.diamond-table tbody th {
+.statistics-table tbody th {
   background: transparent;
   color: var(--text);
   font-size: 13px;
@@ -1549,7 +1549,7 @@ tbody tr:hover {
 }
 
 .statistics-table {
-  min-width: 1650px;
+  min-width: 540px;
   border-collapse: separate;
   border-spacing: 0;
 }
@@ -1824,3 +1824,5 @@ tbody tr:hover {
     scroll-behavior: auto !important
   }
 }
+
+.analytics-freshness { padding: 0 24px 16px; }

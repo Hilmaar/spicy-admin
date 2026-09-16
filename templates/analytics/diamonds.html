@@ -56,7 +56,12 @@
   {% if unavailable %}
     <section class="card empty-state" role="status">
       <span class="feature-icon">{% include "components/icon.html" with name="server" %}</span>
-      <h2>CoreProtect analytics unavailable</h2>
+      {% if rollup_message %}
+        <h2>Base-block analytics unavailable</h2>
+        <p>{{ rollup_message }}</p>
+      {% else %}
+        <h2>CoreProtect analytics unavailable</h2>
+      {% endif %}
       <p>The data source could not provide complete diamond statistics. Please try again shortly. Contact a portal owner if this continues.</p>
       <a class="button secondary" href="{{ request.get_full_path }}">Try again</a>
     </section>
@@ -79,58 +84,20 @@
           Results may be cached for up to 45 seconds.
         </p>
       </div>
-      {% if report.rows %}
-        <div class="table-scroll statistics-scroll"
-             role="region"
-             aria-label="Diamond mining counts by player"
-             tabindex="0">
-          <table class="diamond-table statistics-table">
-            <caption class="sr-only">Natural diamond mining counts, sorted by total descending, then player name and UUID.</caption>
-            <thead>
-              <tr>
-                <th scope="col">Player</th>
-                <th scope="col" class="number">Diamond Ore</th>
-                <th scope="col" class="number">Deepslate Diamond Ore</th>
-                <th scope="col" class="number" aria-sort="descending">Total Diamonds</th>
-                <th scope="col" class="number">Stone</th>
-                <th scope="col" class="number">Deepslate</th>
-                <th scope="col" class="number">Total Base Blocks</th>
-                <th scope="col" class="number">Diamonds per 1,000 Base Blocks</th>
-                <th scope="col" class="number">Base Blocks per Diamond</th>
-                <th scope="col" class="number">Stone per normal Diamond Ore</th>
-                <th scope="col" class="number">Deepslate per Deepslate Diamond Ore</th>
-              </tr>
-            </thead>
-            <tbody>
-              {% for row in report.rows %}
-                <tr>
-                  <th scope="row">{{ row.player_name }}{% if row.small_sample %}<span class="sample-badge">Small sample</span>{% endif %}</th>
-                  <td class="number mono">{{ row.diamond_ore|intcomma }}</td>
-                  <td class="number mono">{{ row.deepslate_diamond_ore|intcomma }}</td>
-                  <td class="number mono accent-text"><strong>{{ row.total|intcomma }}</strong></td>
-                  <td class="number mono">{{ row.stone|intcomma }}</td>
-                  <td class="number mono">{{ row.deepslate|intcomma }}</td>
-                  <td class="number mono">{{ row.total_base_blocks|intcomma }}</td>
-                  <td class="number mono {% if row.small_sample %}ratio-muted{% endif %}">{{ row.diamonds_per_1000|mining_ratio }}</td>
-                  <td class="number mono {% if row.small_sample %}ratio-muted{% endif %}">{{ row.base_blocks_per_diamond|mining_ratio }}</td>
-                  <td class="number mono {% if row.small_sample %}ratio-muted{% endif %}">{{ row.stone_per_normal_diamond|mining_ratio }}</td>
-                  <td class="number mono {% if row.small_sample %}ratio-muted{% endif %}">{{ row.deepslate_per_deep_diamond|mining_ratio }}</td>
-                </tr>
-              {% endfor %}
-            </tbody>
-          </table>
-        </div>
-      {% else %}
-        <div class="analytics-empty" role="status">
-          <span class="feature-icon">{% include "components/icon.html" with name="diamond" %}</span>
-          <p>No natural diamond mining events matched this range.</p>
-        </div>
-      {% endif %}
+      <div class="analytics-freshness" role="status">
+        <p>Base-block analytics updated {{ report.base_updated_at|date:"Y-m-d H:i:s" }} UTC.</p>
+        {% if report.base_reconciled_at %}<p class="small text-muted">Recent rollback reconciliation: {{ report.base_reconciled_at|date:"Y-m-d H:i:s" }} UTC.</p>{% endif %}
+        {% if report.base_warning %}<p class="notice">Base-block analytics may be stale. The last sync is delayed or failed; ratios may not reflect recent mining or rollbacks.</p>{% endif %}
+        <p class="small text-muted">Natural diamonds are queried from CoreProtect. Complete base-block days use the latest rollup; precise boundary windows are queried directly.</p>
+      </div>
     </section>
+    {% include "analytics/layer_table.html" with rows=report.normal_rows heading="Normal Diamond Mining" target_label="Diamond Ore" base_label="Stone" rate_label="Diamonds per 1,000 Stone" inverse_label="Stone per Diamond" table_id="normal-diamonds" %}
+    {% include "analytics/layer_table.html" with rows=report.deepslate_rows heading="Deepslate Diamond Mining" target_label="Deepslate Diamond Ore" base_label="Deepslate" rate_label="Diamonds per 1,000 Deepslate" inverse_label="Deepslate per Diamond" table_id="deepslate-diamonds" %}
+    {% if not report.rows %}<p class="notice">No natural diamond mining events matched this range.</p>{% endif %}
   {% endif %}
   <div class="notice analytics-note">
     Stone and deepslate count all qualifying player breaks, including previously player-placed blocks by design.
-    Ratios use these base-block samples; fewer than {{ small_sample_threshold|intcomma }} base blocks is labelled Small sample. A dash means the divisor is zero.
+    Ratios use these base-block samples; fewer than {{ small_sample_threshold|intcomma }} corresponding base blocks in each table is labelled Small sample. A dash means the divisor is zero.
     Scroll within the table to keep column labels visible.
     Counts exclude rolled-back events and diamond ore that had previously been placed by a player at the same location.
     Each count represents an ore block broken, not the number of diamonds dropped. High counts alone do not establish cheating.
