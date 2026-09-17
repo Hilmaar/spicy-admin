@@ -133,7 +133,7 @@ The [OAuth authorization-code flow](https://docs.discord.com/developers/topics/o
 one-time session-bound state with a 10-minute lifetime. Login and logout use CSRF-protected
 POSTs. Callback redirects always return to the dashboard. User tokens are never persisted.
 Profile ID, username, display name, avatar hash, and last successful login are stored.
-Sessions expire after 12 hours; role checks happen independently. API failures/rate limits
+Sessions use a rolling 30-day lifetime; role checks happen independently. API failures/rate limits
 deny ordinary role-based requests with a clear 503 until retry is allowed. The explicit
 user-ID staff override described below is independent of guild availability.
 
@@ -387,3 +387,22 @@ require a Phase 2B.2 rollup rebuild. Audit retention defaults to 365 days; recom
 `prune_audit_logs` command through existing scheduling, without installing a scheduler.
 See [audit schema, permissions, overrides, IP trust, and operations](docs/audit-log.md) and
 [Phase 2B.3 verification](docs/phase-2b3-verification.md).
+
+## Phase 2B.4 frontend polish and session investigation
+
+Native selects share full-control hover/focus styling, mining scrollbars use the signature
+green accent, and overflow cues initialize before the first scroll. Bottom fades are 44px;
+top fades remain a separate subtle 10px treatment. Clock positions now use external CSS;
+the existing CSP stays restrictive. Browser checks support Edge and Firefox.
+
+The session investigation reproduced cross-device invalidation: each OAuth callback
+regenerated an already-unusable password, changing Django's session auth hash for other
+devices. The callback now preserves existing unusable passwords. Session lifetime/cookie
+settings, fixation protection, role revalidation, and access overrides are unchanged.
+See [the investigation and runtime checks](docs/discord-session-investigation.md) and
+[Phase 2B.4 verification](docs/phase-2b4-verification.md).
+
+The verified production proxy peer is `172.26.0.1`, explicitly configured through
+`AUDIT_TRUSTED_PROXY_IPS`; it is not a built-in trusted default. Historical audit IPs remain
+unchanged. Daily pruning keeps a rolling 365-day history, deleting only older events.
+No schema migration, infrastructure edit, scheduler installation or deployment is included.

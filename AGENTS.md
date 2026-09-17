@@ -1,6 +1,6 @@
 # spicy-admin invariants
 
-Phase 1, Phase 2A, and Phase 2B.3 (mining UI cleanup, audit log, and Discord user-ID staff overrides) are implemented. Do not implement Phase 2C
+Phase 1, Phase 2A, and Phase 2B.4 (frontend polish and cross-device session continuity) are implemented. Do not implement Phase 2C
 or later scope unless explicitly asked.
 
 1. **CoreProtect is READ ONLY.** Never write data, change schema/indexes, run migrations,
@@ -31,6 +31,8 @@ or later scope unless explicitly asked.
 ## Structure and checks
 
 - `accounts`: OAuth and a single centralized permission service; no password backend.
+- Preserve existing unusable passwords during OAuth refresh: changing them invalidates other sessions.
+- Keep CSP restrictive; clock positions use external CSS, and overflow reads follow DOM readiness.
 - `portal`: dashboard/layout; `documentation`: sanitized, allowlisted repository Markdown.
 - `coreprotect`: semantic repository boundary, no Django-managed external models.
 - `analytics`: validated UTC ore filters, short result caching, and protected UI.

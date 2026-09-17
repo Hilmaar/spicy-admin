@@ -5,6 +5,7 @@ loopback-only server, mocked external services, and .artifacts/ui.sqlite3; never
 """
 
 # ruff: noqa: E402
+import argparse
 import os
 import sys
 import threading
@@ -12,7 +13,12 @@ from pathlib import Path
 from unittest.mock import patch
 from wsgiref.simple_server import WSGIRequestHandler, make_server
 
+parser = argparse.ArgumentParser(description=__doc__)
+parser.add_argument("--browser", choices=("edge", "firefox"), default="edge")
+args = parser.parse_args()
 ROOT = Path(__file__).resolve().parent.parent
+if args.browser == "firefox":
+    os.environ.setdefault("PLAYWRIGHT_BROWSERS_PATH", str(ROOT / ".artifacts" / "playwright"))
 (ROOT / ".artifacts").mkdir(exist_ok=True)
 sys.path.insert(0, str(ROOT))
 os.environ["DJANGO_SETTINGS_MODULE"] = "config.settings.test"
@@ -26,8 +32,9 @@ from django.contrib.staticfiles.handlers import StaticFilesHandler
 from django.core.management import call_command
 from django.core.wsgi import get_wsgi_application
 from django.test import Client
+from frontend_browser_checks import check_frontend_polish, install_csp_monitor
 from mining_browser_checks import check_mining_tables
-from playwright.sync_api import sync_playwright
+from playwright.sync_api import expect, sync_playwright
 
 from accounts.discord import Membership
 from accounts.models import User
@@ -118,11 +125,15 @@ try:
             )
         )
         with sync_playwright() as p:
-            browser = p.chromium.launch(channel="msedge", headless=True)
+            browser = (
+                p.firefox.launch(headless=True)
+                if args.browser == "firefox"
+                else p.chromium.launch(channel="msedge", headless=True)
+            )
             context = browser.new_context(
                 viewport={"width": 1440, "height": 1080},
                 timezone_id="Pacific/Honolulu",
-                has_touch=True,
+                has_touch=args.browser != "firefox",
                 reduced_motion="reduce",
             )
             context.route(
@@ -132,6 +143,8 @@ try:
                     body=(ROOT / "static/favicon.svg").read_text(),
                 ),
             )
+            csp_violations = []
+            install_csp_monitor(context, csp_violations)
             page = context.new_page()
             page.on("pageerror", lambda error: errors.append(str(error)))
             page.on(
@@ -160,7 +173,8 @@ try:
             assert page.locator("html").get_attribute("data-theme") == "light"
             page.screenshot(path=str(ROOT / ".artifacts/dashboard-light.png"), full_page=True)
             page.get_by_role("link", name="Admin Cheat Sheet", exact=True).click()
-            assert page.locator("table").is_visible()
+            page.wait_for_load_state()
+            expect(page.locator("table")).to_be_visible()
             page.screenshot(path=str(ROOT / ".artifacts/docs-light.png"), full_page=True)
             page.get_by_role("button", name="Switch to dark theme").click()
             page.set_viewport_size({"width": 390, "height": 844})
@@ -185,6 +199,7 @@ try:
             assert page.get_by_role("heading", name="Connection unavailable").is_visible()
             page.set_viewport_size({"width": 1440, "height": 1080})
             page.get_by_role("link", name="Ore Statistics", exact=True).click()
+            page.wait_for_load_state()
             assert page.url.endswith("/ore-statistics/")
             assert page.locator(".material-card").count() == 3
             assert page.locator(".material-nav a[aria-current=page]").inner_text() == "Overview"
@@ -194,6 +209,7 @@ try:
             page.screenshot(path=str(ROOT / ".artifacts/overview-light.png"), full_page=True)
             page.get_by_role("button", name="Switch to dark theme").click()
             page.get_by_role("link", name="View Diamonds statistics").click()
+            page.wait_for_load_state()
             assert page.url.endswith("/ore-statistics/diamonds/")
             assert page.get_by_role("heading", name="Diamond Mining Statistics").is_visible()
             assert (
@@ -212,12 +228,14 @@ try:
             analytics_factory.return_value.get_denominator_stats.assert_not_called()
             assert page.get_by_text("DenominatorOnly", exact=True).count() == 0
             assert page.locator("#id_range").input_value() == "all"
+            check_frontend_polish(page, base, ROOT, args.browser)
             check_mining_tables(page, base, analytics_factory.return_value, ROOT)
             page.screenshot(path=str(ROOT / ".artifacts/diamonds-dark.png"), full_page=True)
             page.get_by_role("button", name="Switch to light theme").click()
             page.screenshot(path=str(ROOT / ".artifacts/diamonds-light.png"), full_page=True)
             page.get_by_label("Time range", exact=True).select_option("7d")
             page.get_by_role("button", name="Apply filters").click()
+            page.wait_for_load_state()
             assert page.locator("#id_range").input_value() == "7d"
             # Whole dates, preview, two months, no query before Apply, and Cancel.
             before_url = page.url
@@ -240,6 +258,7 @@ try:
             assert page.locator("#id_end").input_value() == "2026-09-02T12:00:00Z"
             page.screenshot(path=str(ROOT / ".artifacts/range-light.png"))
             page.get_by_role("button", name="Apply range", exact=True).click()
+            page.wait_for_load_state()
             assert page.locator("#id_start").input_value() == "2026-09-10T00:00:00Z"
             assert page.locator("#id_end").input_value() == "2026-09-13T00:00:00Z"
             query = analytics_factory.return_value.get_diamond_stats.call_args.args[0]
@@ -271,6 +290,7 @@ try:
             end_button = page.locator("[data-time-end]")
             start_button.click()
             assert clock.locator(".clock-number").count() == 24
+            assert page.locator("[style], script:not([src]), style").count() == 0
             page.screenshot(path=str(ROOT / ".artifacts/clock-hours-light.png"))
             clock.locator('[data-value="13"]').click()
             assert clock.locator(".clock-number").count() == 60
@@ -307,6 +327,7 @@ try:
             page.get_by_role("button", name="Use end of day").click()
             assert page.locator("#precise-end").input_value() == "2026-09-13T00:00:00Z"
             page.get_by_role("button", name="Apply range", exact=True).click()
+            page.wait_for_load_state()
             assert (
                 analytics_factory.return_value.get_denominator_stats.call_args.args[0].start.hour
                 == 13
@@ -332,12 +353,14 @@ try:
             dialog.get_by_role("button", name="2024-02-29", exact=True).click()
             dialog.get_by_role("button", name="2024-02-29", exact=True).click()
             page.get_by_role("button", name="Apply range", exact=True).click()
+            page.wait_for_load_state()
             assert page.locator("#id_end").input_value() == "2024-03-01T00:00:00Z"
             # Reverse selection spanning two months normalizes the endpoints.
             page.get_by_role("button", name="Choose custom range").click()
             dialog.get_by_role("button", name="2024-03-02", exact=True).click()
             dialog.get_by_role("button", name="2024-02-28", exact=True).click()
             page.get_by_role("button", name="Apply range", exact=True).click()
+            page.wait_for_load_state()
             assert page.locator("#id_start").input_value() == "2024-02-28T00:00:00Z"
             assert page.locator("#id_end").input_value() == "2024-03-03T00:00:00Z"
             # Existing offset/subsecond bounds survive opening and applying the clock UI unchanged.
@@ -348,6 +371,7 @@ try:
             )
             page.get_by_role("button", name="Choose custom range").click()
             page.get_by_role("button", name="Apply range", exact=True).click()
+            page.wait_for_load_state()
             precise_query = analytics_factory.return_value.get_denominator_stats.call_args.args[0]
             assert precise_query.start.isoformat() == "2026-09-10T00:00:00.000001+00:00"
             assert precise_query.end.isoformat() == "2026-09-10T00:00:00.000002+00:00"
@@ -386,13 +410,12 @@ try:
             box = clock.locator(".clock-face").bounding_box()
             center_x = box["x"] + box["width"] / 2
             center_y = box["y"] + box["height"] / 2
-            page.touchscreen.tap(center_x, center_y - box["width"] * 76 / 280)
+            tap = page.mouse.click if args.browser == "firefox" else page.touchscreen.tap
+            tap(center_x, center_y - box["width"] * 76 / 280)
             assert clock.get_by_role("slider").get_attribute("aria-label") == "Minute"
             angle = 37 * math.pi / 30
             radius = box["width"] * 108 / 280
-            page.touchscreen.tap(
-                center_x + math.sin(angle) * radius, center_y - math.cos(angle) * radius
-            )
+            tap(center_x + math.sin(angle) * radius, center_y - math.cos(angle) * radius)
             assert clock.get_by_role("slider").get_attribute("aria-valuenow") == "37"
             page.screenshot(path=str(ROOT / ".artifacts/clock-minutes-dark.png"))
             page.keyboard.press("Escape")
@@ -440,6 +463,7 @@ try:
                 "2026-09-13T00:00:00Z"
             )
             fallback_page.get_by_role("button", name="Apply filters").click()
+            page.wait_for_load_state()
             assert fallback_page.locator("#id_range").input_value() == "custom"
             fallback_page.goto(base + "/audit-log/")
             assert fallback_page.get_by_label("Start (UTC)", exact=True).is_visible()
@@ -447,9 +471,11 @@ try:
             assert fallback_page.get_by_role("heading", name="Event details").is_visible()
             fallback.close()
             browser.close()
+            assert not csp_violations, csp_violations
             assert not errors, errors
             print(
-                "Browser checks passed: Phase 1; separate mining tables; rollup bootstrap; "
+                f"Browser checks passed ({args.browser}): Phase 1; separate mining tables; "
+                "rollup bootstrap; "
                 "UTC calendar and radial clock; keyboard/touch/Cancel; dark/light; mobile; "
                 "sticky headers/overflow fades; audit filters/pagination/details; "
                 "threshold audit; no JS errors."

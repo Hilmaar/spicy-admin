@@ -101,6 +101,14 @@ loopback Docker mapping and that this path can only originate at the trusted pro
 empty if uncertain: a proxy/bridge IP is preferable to an attacker-controlled address.
 No Nginx, Docker, networking, or infrastructure configuration is changed by this feature.
 
+In the deployment reported for Phase 2B.4, the web container sees the host/Docker bridge
+peer `172.26.0.1`. Production explicitly configures `AUDIT_TRUSTED_PROXY_IPS=172.26.0.1`
+because host Nginx overwrites both `X-Real-IP` and `X-Forwarded-For` with `$remote_addr`.
+The app still uses the single validated XFF value only after checking that exact peer.
+This is a deployment-specific setting, not a hardcoded or default trusted address.
+Other deployments must verify their own peer/path. Historical audit rows containing
+`172.26.0.1` remain unchanged; no backfill or database migration is needed.
+
 ## Browsing and threshold events
 
 The audit table contains only Timestamp / Actor / Event / Result, newest first. It defaults
@@ -132,7 +140,9 @@ docker-compose run --rm web python manage.py prune_audit_logs
 ```
 
 Recommend a once-daily run using the operator's existing scheduling system, with output
-monitored. No scheduler is installed and no pruning happens on page requests.
+monitored. Daily describes execution frequency, not retention duration: each run deletes
+only rows older than 365 days (or the configured duration), retaining a rolling 365-day
+history. Recent events are retained. No scheduler is installed and no pruning happens on page requests.
 
 For a later authorized release, apply portal migrations before serving the new code:
 `docker-compose run --rm web python manage.py migrate`. The existing startup script also

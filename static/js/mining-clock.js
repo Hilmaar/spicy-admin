@@ -19,12 +19,10 @@
     face.setAttribute('aria-valuetext', `${pad(value)} ${stage}`);
     dialog.querySelector('[data-clock-status]').textContent = stage === 'hour' ?
       'Hours: outer ring 1–12, inner ring 13–23 and 00.' : 'Minutes: choose any minute, 00–59.';
-    numbers.replaceChildren();
+    const fragment = document.createDocumentFragment();
     const count = stage === 'hour' ? 24 : 60;
     for (let n = 0; n < count; n++) {
       const inner = stage === 'hour' && (n === 0 || n > 12);
-      const radius = inner ? 76 : 116;
-      const angle = n * Math.PI / (stage === 'hour' ? 6 : 30);
       const button = document.createElement('button');
       button.type = 'button'; button.tabIndex = -1;
       button.className = 'clock-number';
@@ -33,11 +31,12 @@
       button.classList.toggle('clock-dot', stage === 'minute' && n % 5 !== 0);
       button.textContent = stage === 'hour' || n % 5 === 0 || n === value ? pad(n) : '·';
       button.setAttribute('aria-label', `${stage} ${pad(n)}`);
-      button.style.left = `${(140 + Math.sin(angle) * radius) / 2.8}%`;
-      button.style.top = `${(140 - Math.cos(angle) * radius) / 2.8}%`;
+      // Finite positions live in the external stylesheet, never in style attributes.
+      button.dataset.clockPosition = `${inner ? 'inner' : 'outer'}-${stage === 'hour' ? (n % 12) * 5 : n}`;
       button.addEventListener('click', () => select(n));
-      numbers.append(button);
+      fragment.append(button);
     }
+    numbers.replaceChildren(fragment);
     const angle = value * Math.PI / (stage === 'hour' ? 6 : 30);
     const radius = stage === 'hour' && (hour === 0 || hour > 12) ? 76 : 116;
     const hand = face.querySelector('line');

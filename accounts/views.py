@@ -124,7 +124,10 @@ def callback(request):
                 )
             for field in ("username", "display_name", "avatar"):
                 setattr(user, field, profile[field])
-            user.set_unusable_password()
+            # An unusable password is salted too. Regenerating it on every OAuth
+            # callback invalidates the session auth hash on every other device.
+            if user.has_usable_password():
+                user.set_unusable_password()
             user.save()
             GuildAuthorization.objects.filter(user=user).delete()
         if PORTAL_ACCESS not in authorization_for(user):

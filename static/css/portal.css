@@ -1406,6 +1406,49 @@ tbody tr:hover {
   }
 }
 
+/* Shared native selects: one full control surface, including the arrow area.
+   The browser still owns popup semantics, type-ahead and mobile selection. */
+select {
+  appearance: none;
+  cursor: pointer;
+  background-image: url("../img/select-chevron.svg");
+  background-repeat: no-repeat;
+  background-position: right 12px center;
+  background-size: 16px;
+  background-clip: border-box;
+}
+
+select:not(:disabled):hover,
+select:not(:disabled):focus-visible {
+  background-color: var(--surface-raised);
+  border-color: var(--accent-text);
+}
+
+select:focus-visible {
+  outline: 2px solid var(--accent-text);
+  outline-offset: 3px;
+}
+
+select option {
+  padding: 8px 12px;
+  background-color: var(--surface);
+  color: var(--text);
+}
+
+select option:hover,
+select option:focus,
+select option:checked {
+  background-color: Highlight;
+  color: HighlightText;
+}
+
+@media (forced-colors: active) {
+  select {
+    appearance: auto;
+    background-image: none;
+  }
+}
+
 /* Diamond analytics: reuse portal cards/tables and keep filters keyboard-accessible. */
 .analytics-filters {
   padding: 24px;
@@ -1441,9 +1484,13 @@ tbody tr:hover {
   padding: 10px 12px;
   border: 1px solid var(--border);
   border-radius: 6px;
-  background: var(--bg);
+  background-color: var(--bg);
   color: var(--text);
   font: inherit;
+}
+
+.filter-field select {
+  padding-inline-end: 40px;
 }
 
 .filter-field input:focus-visible,
@@ -1952,11 +1999,11 @@ tbody tr:hover {
 }
 
 .sample-control select {
-  padding: 6px 9px;
+  padding: 6px 36px 6px 9px;
   border: 1px solid var(--border);
   border-radius: 6px;
   color: var(--text);
-  background: var(--surface);
+  background-color: var(--surface);
   font: inherit;
 }
 
@@ -2020,7 +2067,6 @@ tbody tr:hover {
 .scroll-edge-top, .scroll-edge-bottom {
   left: 0;
   right: 0;
-  height: 14px;
 }
 
 .scroll-edge-left, .scroll-edge-right {
@@ -2031,12 +2077,16 @@ tbody tr:hover {
 
 .scroll-edge-top {
   top: 0;
+  right: 14px;
+  height: 10px;
   background: linear-gradient(to bottom, var(--surface), transparent);
 }
 
 .scroll-edge-bottom {
   bottom: 0;
-  background: linear-gradient(to top, var(--surface), transparent);
+  right: 14px;
+  height: 44px;
+  background: linear-gradient(to top, var(--surface) 0%, var(--surface) 12%, transparent 100%);
 }
 
 .scroll-edge-left {
@@ -2049,29 +2099,40 @@ tbody tr:hover {
   background: linear-gradient(to left, var(--surface), transparent);
 }
 
-.more-top .scroll-edge-top, .more-bottom .scroll-edge-bottom,
+.more-top .scroll-edge-top { opacity: .65; }
+.more-bottom .scroll-edge-bottom { opacity: 1; }
 .more-left .scroll-edge-left, .more-right .scroll-edge-right {
   opacity: .95;
 }
 
 .statistics-scroll {
-  scrollbar-color: var(--muted) var(--surface-raised);
+  --scroll-track: #27392f;
+  scrollbar-color: var(--accent) var(--scroll-track);
   scrollbar-width: auto;
 }
 
 .statistics-scroll::-webkit-scrollbar {
-  width: 11px;
-  height: 11px;
+  width: 12px;
+  height: 12px;
 }
 
 .statistics-scroll::-webkit-scrollbar-track {
-  background: var(--surface-raised);
+  background: var(--scroll-track);
+  border-radius: 8px;
 }
 
 .statistics-scroll::-webkit-scrollbar-thumb {
-  background: var(--muted);
-  border: 3px solid var(--surface-raised);
+  background: var(--accent);
+  border: 2px solid var(--scroll-track);
   border-radius: 6px;
+}
+
+.statistics-scroll::-webkit-scrollbar-thumb:hover {
+  background: #70ffc7;
+}
+
+.statistics-scroll:hover {
+  scrollbar-color: #70ffc7 var(--scroll-track);
 }
 
 [data-range-summary]:empty {
