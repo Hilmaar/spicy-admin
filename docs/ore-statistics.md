@@ -1,7 +1,7 @@
-# Phase 2B.2 ore overview and material reports
+# Ore overview and material reports (through Phase 2B.3)
 
 The sidebar and dashboard mining action open `/ore-statistics/`. Its compact Diamonds,
-Ancient Debris, and Emerald cards show all-time/all-world natural target block totals and
+Ancient Debris, and Emerald cards show all-time natural target block totals in their configured world and
 unique qualifying players. Diamond/Emerald players are the normalized-UUID union across
 their two layers, never a sum of separate player counts. Cards query targets only: no
 denominator scans, PostgreSQL rollup SUMs, or rollup readiness dependency. A failed card
@@ -82,7 +82,8 @@ spicy:mining:threshold:v1:normal-emerald
 Preferences belong to that browser/origin, not the Discord account or query filters.
 Invalid/absent values use the configured default; blocked storage still permits changes
 for the current page. Sort choice resets to ratio descending on navigation. Thresholds
-are neither server query parameters nor additional report cache variants.
+are sent as allowlisted audit context with Apply, but never alter report queries or cache keys.
+Changes also send a narrow CSRF-protected audit POST; local preferences survive audit failure.
 
 ## Material themes and optional local assets
 
@@ -116,8 +117,8 @@ No image hotlinks, textures, new runtime packages, or framework dependencies are
 ## Cache, freshness, and upgrading from Phase 2B.1
 
 Detailed report keys now include material group, range, canonical custom bounds, world,
-and sync generation (`mining:v5`). Overview keys are group-specific all-time target-only
-keys. Successful results keep the 45-second TTL. Readiness/hard expiry are checked before
+and sync generation (`mining:v6`). Overview keys include group and resolved world (`mining:v2:overview`), with all-time target-only
+counts. Successful results keep the 45-second TTL. Readiness/hard expiry are checked before
 detail-cache access. Freshness still warns after 15 minutes or a failed sync and blocks
 ratios after 24 hours; no incomplete rollup is presented as complete.
 
@@ -148,3 +149,23 @@ must remain an unavailable result, not approximation or a timeout increase.
 Iron/Coal/Gold/Redstone/Lapis/Copper pages, scores, alerts, feeds, integrations, raw event
 copies, Redis/Celery, source schema/index changes, and infrastructure remain deferred.
 No push, merge, or deployment is performed by this implementation.
+
+## Phase 2B.3 configured worlds and cleaner reports
+
+`OrePage.logical_world` in `analytics/ore_config.py` maps Diamonds/Emerald to `world` and
+Ancient Debris to `world_nether`. Both cards and details resolve names through the existing
+CoreProtect world map; a missing or ambiguous mapping is unavailable, never an all-world
+fallback. Numeric IDs remain dynamic. Detail cache keys include this resolved world and
+ignore user-supplied `world` parameters. All time remains the intentional default.
+
+The World selector, successful-state report metadata/status panel, redundant filter helper
+text, and explanatory footer are removed. Backend query bounds, cache, rollup freshness,
+initialization and expiry checks remain unchanged. Only actual stale/error states add notices.
+The shared date/time form and calendar/clock also serve the new Admin Audit Log.
+
+`static/js/table-scroll.js` adds noninteractive overflow fades on each table: top/bottom and
+left/right appear only while content remains in that direction. Scroll, table content and
+size changes update them. Theme variables style subtle fades and clearer scrollbars; sticky
+headers, keyboard scrolling, and table semantics remain intact.
+
+See [audit operations and access overrides](audit-log.md) for event capture and upgrade steps.

@@ -198,7 +198,7 @@ class CacheTests(TestCase):
         with patch("analytics.services.cache.set") as store:
             get_report(self.form({"range": "7d"}))
         key, report = store.call_args.args
-        self.assertTrue(key.startswith("mining:v5:report:"))
+        self.assertTrue(key.startswith("mining:v6:report:"))
         self.assertEqual(
             set(vars(report)),
             {
@@ -246,7 +246,7 @@ class DiamondPageTests(TestCase):
         self.repo_patch = patch("analytics.services.get_repository")
         self.repository = self.repo_patch.start().return_value
         self.addCleanup(self.repo_patch.stop)
-        self.repository.list_worlds.return_value = WORLDS
+        self.repository.list_worlds.return_value = WORLDS + (World(987, "world"),)
         self.repository.get_diamond_stats.return_value = ROWS
         ready_state()
         self.repository.get_denominator_stats.return_value = ()
@@ -307,21 +307,26 @@ class DiamondPageTests(TestCase):
         with patch("accounts.permissions.authorization_for", return_value={"portal.access"}):
             self.assertEqual(self.client.get(self.url).status_code, 403)
 
-    def test_dynamic_world_selected_and_active_context_visible(self):
+    def test_configured_world_resolved_and_untrusted_world_ignored(self):
         self.login()
         with patch("analytics.services.timezone.now", return_value=NOW):
             response = self.client.get(self.url, {"range": "7d", "world": "1701"})
         self.assertContains(response, "Last 7 days")
-        self.assertContains(response, "archived_world")
-        self.assertContains(response, "resource_world")
-        self.assertContains(response, "2026-09-07 12:30:00")
+        for removed in (
+            "archived_world",
+            "resource_world",
+            'id="id_world"',
+            "Queried at",
+            "Select both dates",
+        ):
+            self.assertNotContains(response, removed)
         self.repository.get_diamond_stats.assert_called_once_with(
-            DiamondQuery(NOW - timedelta(days=7), NOW, 1701),
+            DiamondQuery(NOW - timedelta(days=7), NOW, 987),
         )
 
     def test_invalid_world_and_range_do_not_query_analytics(self):
         self.login()
-        for data in ({"world": "9999"}, {"range": "bad"}, {"range": "custom", "start": "bad"}):
+        for data in ({"range": "bad"}, {"range": "custom", "start": "bad"}):
             with self.subTest(data=data):
                 response = self.client.get(self.url, data)
                 self.assertContains(response, "Please correct the filters", status_code=400)
@@ -358,7 +363,10 @@ class DiamondPageTests(TestCase):
 
     def test_player_and_world_labels_are_escaped(self):
         self.login()
-        self.repository.list_worlds.return_value = [World(802, "<script>bad</script>")]
+        self.repository.list_worlds.return_value = [
+            World(802, "<script>bad</script>"),
+            World(987, "world"),
+        ]
         self.repository.get_diamond_stats.return_value = [
             DiamondStatsRow("a" * 32, "<img src=x>", 1, 0)
         ]
@@ -379,5 +387,5 @@ class DiamondPageTests(TestCase):
             self.client.get(self.url, {"range": "24h"})
         with patch("analytics.services.timezone.now", return_value=NOW + timedelta(seconds=20)):
             response = self.client.get(self.url, {"range": "24h"})
-        self.assertContains(response, "2026-09-14 12:30:00")
-        self.assertNotContains(response, "2026-09-14 12:30:20")
+        self.assertEqual(response.context["report"].query.end, NOW)
+        self.assertNotContains(response, "Queried at")

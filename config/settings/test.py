@@ -18,3 +18,6 @@ DISCORD_CLIENT_SECRET = "test-only-client-secret"
 DISCORD_BOT_TOKEN = "test-only-bot-token"
 DISCORD_REDIRECT_URI = "https://testserver/auth/callback/"
 COREPROTECT_DB_NAME = ""
+
+DISCORD_ACCESS_OVERRIDE_USER_IDS = frozenset()
+AUDIT_TRUSTED_PROXY_IPS = []

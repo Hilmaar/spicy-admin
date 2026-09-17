@@ -35,6 +35,7 @@ class OrePage:
     tables: tuple[TableConfig, ...]
     # Optional local static path, configured only after the asset exists.
     image: str = ""
+    logical_world: str = "world"
 
     @property
     def slug(self):
@@ -91,6 +92,7 @@ PAGES = (
                 "Netherrack per Ancient Debris",
             ),
         ),
+        logical_world="world_nether",
     ),
     OrePage(
         EMERALD,

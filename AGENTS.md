@@ -1,6 +1,6 @@
 # spicy-admin invariants
 
-Phase 1, Phase 2A, and Phase 2B.2 (ore overview, sortable mining tables, and first expansion groups) are implemented. Do not implement Phase 2C
+Phase 1, Phase 2A, and Phase 2B.3 (mining UI cleanup, audit log, and Discord user-ID staff overrides) are implemented. Do not implement Phase 2C
 or later scope unless explicitly asked.
 
 1. **CoreProtect is READ ONLY.** Never write data, change schema/indexes, run migrations,
@@ -15,8 +15,10 @@ or later scope unless explicitly asked.
     Use `(time, rowid)` ordering, with rowid breaking same-second ties. Search placements
     before the reporting window too; time/world report filters apply to candidate breaks.
 6. Rolled-back events do not count. `action=0` means break; `action=1` means placement.
-7. Discord is the access source of truth. Role IDs, never role names, grant permissions.
-8. Revalidate membership/roles server-side every 30–60 seconds; fail closed on API errors.
+7. Discord OAuth remains mandatory. Exact role IDs or owner-configured Discord user IDs grant access.
+   The environment allowlist grants only Minecraft staff permissions, never Admin permissions.
+8. Revalidate membership/roles server-side every 30-60 seconds; fail closed on API errors
+   for ordinary users. Explicit user-ID overrides do not depend on guild membership or role checks.
 9. Production uses standalone **`docker-compose` 1.25.0**, not Compose v2. Keep version 3.7
    YAML and legacy commands. Avoid profiles, modern depends_on conditions, and newer syntax.
 10. Never alter existing Docker/Pterodactyl/Wings infrastructure, daemon configuration,
@@ -32,6 +34,10 @@ or later scope unless explicitly asked.
 - `portal`: dashboard/layout; `documentation`: sanitized, allowlisted repository Markdown.
 - `coreprotect`: semantic repository boundary, no Django-managed external models.
 - `analytics`: validated UTC ore filters, short result caching, and protected UI.
+- `auditlog`: centralized bounded append-only writes and Admin-only history; read docs/audit-log.md.
+- Only Admin roles grant `portal.audit_log` and `portal.configure`. Never expose the override list.
+- Audit secrets are excluded explicitly; threshold writes require analytics permission and CSRF.
+- Current ore pages resolve logical worlds from the catalog (world/world_nether), never user input.
 - Centralize breaker/placer classification: non-empty non-# name and well-formed non-nil
   UUID. Group diamond results by normalized UUID; do not assume every co_user row is a player.
 - Cache hits must never bypass `minecraft.analytics` authorization or Discord revalidation.

@@ -1,0 +1,20 @@
+<p id="range-help" class="sr-only">UTC. Start is inclusive; end is exclusive.</p>
+{% if form.errors %}<div class="notice filter-error"
+     role="alert">Please correct the filters below.</div>{% endif %}
+{{ form.non_field_errors }}
+<div class="filter-fields">
+  {% for field in form %}
+    <div class="filter-field {% if field.name == 'start' or field.name == 'end' %}exact-fallback{% endif %}">
+      <label for="{{ field.id_for_label }}">{{ field.label }}</label>{{ field }}{{ field.errors }}
+    </div>
+  {% endfor %}
+</div>
+<div class="range-picker-control" hidden>
+  <button type="button"
+          class="button secondary"
+          data-range-open
+          aria-haspopup="dialog"
+          aria-controls="mining-range-dialog">Choose custom range</button>
+  <p class="small text-muted" data-range-summary></p>
+</div>
+<div class="filter-actions"><button class="button primary" type="submit">Apply filters {% include "components/icon.html" with name="arrow" %}</button></div>

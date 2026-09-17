@@ -147,7 +147,7 @@
   };
   const updateSummary = () => {
     form.querySelector('[data-range-summary]').textContent = preset.value === 'custom' && startInput.value && endInput.value ?
-      `${friendly(startInput.value)} to ${friendly(endInput.value)} UTC (end exclusive)` : 'Select both dates in one calendar. UTC, inclusive whole dates.';
+      `${friendly(startInput.value)} to ${friendly(endInput.value)} UTC (end exclusive)` : '';
   };
   const open = () => {
     exactStart.value = startInput.value; exactEnd.value = endInput.value;

@@ -28,7 +28,7 @@ class ExpansionTests(TestCase):
         factory = patch("analytics.services.get_repository")
         self.repo = factory.start().return_value
         self.addCleanup(factory.stop)
-        self.repo.list_worlds.return_value = (World(83, "world"),)
+        self.repo.list_worlds.return_value = (World(83, "world"), World(927, "world_nether"))
         self.repo.get_diamond_stats.return_value = (DiamondStatsRow("a" * 32, "Alice", 2, 3),)
         self.repo.get_material_stats.return_value = (MaterialBreakRow("a" * 32, "Alice", (4,)),)
         self.repo.get_denominator_stats.return_value = ()
@@ -89,7 +89,7 @@ class ExpansionTests(TestCase):
                 "start": "2026-09-01T14:30Z",
                 "end": "2026-09-03T18:15Z",
             },
-            worlds=(World(83, "world"),),
+            worlds=(World(83, "world"), World(927, "world_nether")),
         )
         get_report(form, ANCIENT_DEBRIS)
         calls = self.repo.get_denominator_stats.call_args_list
@@ -138,6 +138,41 @@ class ExpansionTests(TestCase):
         self.assertNotContains(response, "password=secret")
         self.repo.get_material_stats.side_effect = None
         self.assertEqual(overview_metric(ANCIENT_DEBRIS).total, 4)
+
+    def test_each_page_uses_configured_world_and_ignores_client_world(self):
+        self.repo.get_material_stats.return_value = ()
+        for page in PAGES:
+            with self.subTest(page=page.slug):
+                response = self.client.get(page.url, {"world": "999"})
+                expected = 927 if page.slug == "ancient-debris" else 83
+                self.assertEqual(response.context["report"].query.world_id, expected)
+                self.assertIsNone(response.context["report"].query.start)
+                for removed in (
+                    'id="id_world"',
+                    "Queried at",
+                    "Select both dates",
+                    "Recent rollback reconciliation:",
+                ):
+                    self.assertNotContains(response, removed)
+
+    def test_missing_or_ambiguous_configured_world_never_falls_back_to_all_worlds(self):
+        for worlds in ((World(99, "resource_world"),), (World(83, "world"), World(99, "world"))):
+            cache.clear()
+            self.repo.list_worlds.return_value = worlds
+            response = self.client.get(PAGES[0].url)
+            self.assertContains(response, "CoreProtect analytics unavailable", status_code=503)
+        self.repo.get_diamond_stats.assert_not_called()
+
+    def test_dynamic_world_mapping_changes_report_cache_identity(self):
+        first = self.client.get(PAGES[0].url, {"world": "100"})
+        second = self.client.get(PAGES[0].url, {"world": "200"})
+        self.assertEqual(first.context["report"].query, second.context["report"].query)
+        self.repo.get_diamond_stats.assert_called_once()
+        # Change only the world lookup cache; the old successful report remains cached.
+        with patch("analytics.services.list_worlds", return_value=(World(528, "world"),)):
+            changed = self.client.get(PAGES[0].url)
+        self.assertEqual(changed.context["report"].query.world_id, 528)
+        self.assertEqual(self.repo.get_diamond_stats.call_count, 2)
 
     def test_emerald_overview_union_and_base_only_debris_players(self):
         self.repo.get_material_stats.return_value = (

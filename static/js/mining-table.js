@@ -1,5 +1,21 @@
 /* Local-only preferences; counts and precise ratios always come from the server. */
 (() => {
+  const audit = document.querySelector('#mining-audit-config');
+  const preferences = {};
+  const hidden = document.querySelector('[data-current-thresholds]');
+  const remember = (table, value) => {
+    preferences[table] = Number(value);
+    if (hidden) hidden.value = JSON.stringify(preferences);
+  };
+  const reportChange = (table, oldValue, newValue) => {
+    if (!audit || oldValue === newValue) return;
+    fetch(audit.dataset.url, {
+      method: 'POST', credentials: 'same-origin', keepalive: true,
+      headers: {'Content-Type': 'application/json', 'X-CSRFToken': audit.dataset.token},
+      body: JSON.stringify({event_type: 'analytics.threshold_changed', table,
+        old_threshold: Number(oldValue), new_threshold: Number(newValue)})
+    }).catch(() => {}); // Audit availability must never gate a local preference.
+  };
   const compare = (a, b) => a < b ? -1 : a > b ? 1 : 0;
   document.querySelectorAll('[data-mining-table]').forEach(section => {
     const select = section.querySelector('[data-sample-threshold]');
@@ -12,13 +28,17 @@
       if (allowed.includes(stored)) threshold = stored;
     } catch (_) { /* Storage can be unavailable; the controls still work. */ }
     select.value = threshold;
+    remember(section.dataset.tableKey, threshold);
     section.querySelector('.sample-control').hidden = false;
     let refresh = () => {};
     select.addEventListener('change', () => {
       if (!allowed.includes(select.value)) return;
+      const previous = threshold;
       threshold = select.value;
+      remember(section.dataset.tableKey, threshold);
       try { localStorage.setItem(key, threshold); } catch (_) { /* Optional persistence. */ }
       refresh();
+      reportChange(section.dataset.tableKey, previous, threshold);
     });
     if (!body) return;
     const rows = [...body.rows].map(element => ({

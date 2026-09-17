@@ -2003,3 +2003,136 @@ tbody tr:hover {
     grid-template-columns: 1fr;
   }
 }
+
+/* Noninteractive scroll boundaries; no shadows on non-overflowing tables. */
+.table-scroll-frame {
+  position: relative;
+  overflow: hidden;
+}
+
+.scroll-edge {
+  position: absolute;
+  pointer-events: none;
+  z-index: 3;
+  opacity: 0;
+}
+
+.scroll-edge-top, .scroll-edge-bottom {
+  left: 0;
+  right: 0;
+  height: 14px;
+}
+
+.scroll-edge-left, .scroll-edge-right {
+  top: 0;
+  bottom: 0;
+  width: 14px;
+}
+
+.scroll-edge-top {
+  top: 0;
+  background: linear-gradient(to bottom, var(--surface), transparent);
+}
+
+.scroll-edge-bottom {
+  bottom: 0;
+  background: linear-gradient(to top, var(--surface), transparent);
+}
+
+.scroll-edge-left {
+  left: 0;
+  background: linear-gradient(to right, var(--surface), transparent);
+}
+
+.scroll-edge-right {
+  right: 0;
+  background: linear-gradient(to left, var(--surface), transparent);
+}
+
+.more-top .scroll-edge-top, .more-bottom .scroll-edge-bottom,
+.more-left .scroll-edge-left, .more-right .scroll-edge-right {
+  opacity: .95;
+}
+
+.statistics-scroll {
+  scrollbar-color: var(--muted) var(--surface-raised);
+  scrollbar-width: auto;
+}
+
+.statistics-scroll::-webkit-scrollbar {
+  width: 11px;
+  height: 11px;
+}
+
+.statistics-scroll::-webkit-scrollbar-track {
+  background: var(--surface-raised);
+}
+
+.statistics-scroll::-webkit-scrollbar-thumb {
+  background: var(--muted);
+  border: 3px solid var(--surface-raised);
+  border-radius: 6px;
+}
+
+[data-range-summary]:empty {
+  display: none;
+}
+
+.audit-table {
+  min-width: 650px;
+}
+
+[data-audit-row] {
+  cursor: pointer;
+}
+
+[data-audit-row]:hover {
+  background: var(--surface-raised);
+}
+
+.audit-pagination {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 16px;
+  padding: 20px 0;
+}
+
+.audit-pagination [aria-current] {
+  color: var(--accent-text);
+  font-weight: 700;
+}
+
+.audit-detail-dialog {
+  width: min(760px, calc(100vw - 32px));
+  max-height: 85vh;
+  color: var(--text);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 24px;
+}
+
+.audit-detail-dialog::backdrop {
+  background: rgba(0, 0, 0, .6);
+}
+
+.audit-details {
+  padding: 24px;
+}
+
+.audit-details dt, .audit-detail-dialog dt {
+  font-weight: 600;
+  color: var(--muted);
+}
+
+.audit-details dd, .audit-detail-dialog dd {
+  margin: 4px 0 18px;
+}
+
+.audit-details pre, .audit-detail-dialog pre {
+  font: inherit;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  margin: 0;
+}

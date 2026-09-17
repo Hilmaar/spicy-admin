@@ -21,6 +21,7 @@ from django.conf import settings
 
 settings.DATABASES["default"]["NAME"] = str(ROOT / ".artifacts" / "ui.sqlite3")
 django.setup()
+from audit_browser_checks import check_audit_and_scroll
 from django.contrib.staticfiles.handlers import StaticFilesHandler
 from django.core.management import call_command
 from django.core.wsgi import get_wsgi_application
@@ -97,8 +98,8 @@ try:
         patch("analytics.services.get_repository") as analytics_factory,
     ):
         analytics_factory.return_value.list_worlds.return_value = [
-            World(83, "world"),
-            World(927, "resource_world"),
+            World(83, "world_nether"),
+            World(927, "world"),
         ]
         analytics_factory.return_value.get_diamond_stats.return_value = (
             DiamondStatsRow("a" * 32, "FixtureAlice", 1234, 5678),
@@ -216,9 +217,8 @@ try:
             page.get_by_role("button", name="Switch to light theme").click()
             page.screenshot(path=str(ROOT / ".artifacts/diamonds-light.png"), full_page=True)
             page.get_by_label("Time range", exact=True).select_option("7d")
-            page.get_by_label("World", exact=True).select_option("927")
             page.get_by_role("button", name="Apply filters").click()
-            assert page.get_by_role("heading", name="Last 7 days · resource_world").is_visible()
+            assert page.locator("#id_range").input_value() == "7d"
             # Whole dates, preview, two months, no query before Apply, and Cancel.
             before_url = page.url
             page.get_by_role("button", name="Choose custom range").click()
@@ -361,7 +361,7 @@ try:
                 assert head.evaluate("el => getComputedStyle(el).position") == "sticky"
                 assert not scroll.evaluate("el => el.scrollWidth > el.clientWidth")
                 scroll.evaluate("el => { el.scrollTop = 0; }")
-            assert page.get_by_role("heading", name="Custom range · resource_world").is_visible()
+            assert page.locator("#id_range").input_value() == "custom"
             page.get_by_role("button", name="Switch to dark theme").click()
             page.set_viewport_size({"width": 390, "height": 844})
             assert not page.evaluate("document.documentElement.scrollWidth > innerWidth")
@@ -401,6 +401,7 @@ try:
             page.get_by_role("button", name="Choose custom range").click()
             page.screenshot(path=str(ROOT / ".artifacts/range-dark.png"))
             page.keyboard.press("Escape")
+            check_audit_and_scroll(page, base, ROOT, user)
             from analytics.rollups import RollupUnavailable
 
             with patch(
@@ -439,16 +440,19 @@ try:
                 "2026-09-13T00:00:00Z"
             )
             fallback_page.get_by_role("button", name="Apply filters").click()
-            assert fallback_page.get_by_role(
-                "heading", name="Custom range", exact=False
-            ).is_visible()
+            assert fallback_page.locator("#id_range").input_value() == "custom"
+            fallback_page.goto(base + "/audit-log/")
+            assert fallback_page.get_by_label("Start (UTC)", exact=True).is_visible()
+            fallback_page.locator("[data-audit-detail]").first.click()
+            assert fallback_page.get_by_role("heading", name="Event details").is_visible()
             fallback.close()
             browser.close()
             assert not errors, errors
             print(
                 "Browser checks passed: Phase 1; separate mining tables; rollup bootstrap; "
                 "UTC calendar and radial clock; keyboard/touch/Cancel; dark/light; mobile; "
-                "sticky headers; no JS errors."
+                "sticky headers/overflow fades; audit filters/pagination/details; "
+                "threshold audit; no JS errors."
             )
 finally:
     server.shutdown()

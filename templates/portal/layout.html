@@ -24,6 +24,8 @@
         {% if can_configure %}<p class="nav-label">Administration</p>
         <a class="nav-item {% if request.resolver_match.app_name == 'coreprotect' %}active{% endif %}"
            href="{% url 'coreprotect:diagnostics' %}">{% include "components/icon.html" with name="server" %} Diagnostics</a>{% endif %}
+      {% if can_view_audit %}<a class="nav-item {% if request.resolver_match.namespace == 'auditlog' %}active{% endif %}"
+   href="{% url 'auditlog:index' %}">{% include "components/icon.html" with name="activity" %} Audit Log</a>{% endif %}
     </nav>
     <div class="sidebar-footer">
       <span class="tiny-label">SPICY.IS / INTERNAL</span>

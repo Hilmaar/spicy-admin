@@ -1,0 +1,16 @@
+{% extends "portal/layout.html" %}
+{% block title %}Audit event details{% endblock %}
+{% block breadcrumb %}Administration / Audit Log / Event{% endblock %}
+{% block content %}
+  <div class="page-heading">
+    <h1>Event details</h1>
+    <a class="button secondary" href="{% url 'auditlog:index' %}">Audit Log</a>
+  </div>
+  <section class="card audit-details"><dl>{% for label, value in details %}<dt>{{ label }}</dt>
+    <dd>
+      <pre>{{ value }}</pre>
+    </dd>
+{% endfor %}
+</dl>
+</section>
+{% endblock %}

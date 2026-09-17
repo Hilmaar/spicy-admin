@@ -8,6 +8,9 @@ from django.shortcuts import redirect, render
 from django.views.decorators.debug import sensitive_variables
 from django.views.decorators.http import require_GET, require_http_methods, require_POST
 
+from auditlog.events import EventType, Result
+from auditlog.service import record
+
 from . import discord
 from .models import GuildAuthorization, User
 from .permissions import PORTAL_ACCESS, authorization_for
@@ -45,6 +48,13 @@ def callback(request):
         and secrets.compare_digest(pending["value"].encode(), supplied.encode())
         and 0 <= time.time() - pending["created"] <= 600
     ):
+        record(
+            request,
+            EventType.AUTH_DENIED,
+            result=Result.DENIED,
+            actor=None,
+            metadata={"reason": "invalid_state"},
+        )
         return render(
             request,
             "accounts/access_error.html",
@@ -55,6 +65,13 @@ def callback(request):
             status=400,
         )
     if request.GET.get("error"):
+        record(
+            request,
+            EventType.AUTH_DENIED,
+            result=Result.DENIED,
+            actor=None,
+            metadata={"reason": "oauth_error"},
+        )
         return render(
             request,
             "accounts/access_error.html",
@@ -66,6 +83,13 @@ def callback(request):
         )
     code = request.GET.get("code", "")
     if not code or len(code) > 2048:
+        record(
+            request,
+            EventType.AUTH_DENIED,
+            result=Result.DENIED,
+            actor=None,
+            metadata={"reason": "oauth_error"},
+        )
         return render(
             request,
             "accounts/access_error.html",
@@ -75,12 +99,20 @@ def callback(request):
             },
             status=400,
         )
+    user = None
     try:
         profile = discord.fetch_profile(code)
         with transaction.atomic():
             user, _ = User.objects.get_or_create(discord_id=profile["discord_id"])
             user = User.objects.select_for_update().get(pk=user.pk)
             if not user.is_active:
+                record(
+                    request,
+                    EventType.AUTH_DENIED,
+                    result=Result.DENIED,
+                    actor=user,
+                    metadata={"reason": "inactive_account"},
+                )
                 return render(
                     request,
                     "accounts/access_error.html",
@@ -96,6 +128,14 @@ def callback(request):
             user.save()
             GuildAuthorization.objects.filter(user=user).delete()
         if PORTAL_ACCESS not in authorization_for(user):
+            state = GuildAuthorization.objects.get(user=user)
+            record(
+                request,
+                EventType.AUTH_DENIED,
+                result=Result.DENIED,
+                actor=user,
+                metadata={"reason": "missing_required_role" if state.is_member else "not_in_guild"},
+            )
             return render(
                 request,
                 "accounts/access_error.html",
@@ -107,6 +147,13 @@ def callback(request):
                 status=403,
             )
     except discord.DiscordUnavailable as exc:
+        record(
+            request,
+            EventType.AUTH_DENIED,
+            result=Result.ERROR,
+            actor=user,
+            metadata={"reason": "oauth_error"},
+        )
         return render(
             request,
             "accounts/access_error.html",
@@ -117,11 +164,14 @@ def callback(request):
             status=503,
         )
     session_login(request, user, backend="accounts.backends.DiscordSessionBackend")
+    record(request, EventType.AUTH_SUCCEEDED, actor=user)
     # Always use our fixed destination; never trust a callback/next URL supplied by the browser.
     return redirect("portal:dashboard")
 
 
 @require_POST
 def logout(request):
+    if request.user.is_authenticated:
+        record(request, EventType.LOGOUT)
     session_logout(request)
     return redirect("accounts:login")

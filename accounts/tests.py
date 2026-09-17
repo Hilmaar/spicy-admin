@@ -21,6 +21,7 @@ class PermissionMappingTests(SimpleTestCase):
             {
                 PORTAL_ACCESS,
                 PORTAL_CONFIGURE,
+                "portal.audit_log",
                 "minecraft.analytics",
                 "minecraft.punishments",
             },

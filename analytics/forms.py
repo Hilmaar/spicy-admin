@@ -28,9 +28,8 @@ class UTCDateTimeField(forms.DateTimeField):
             raise forms.ValidationError("Enter a valid date and time.") from None
 
 
-class DiamondFiltersForm(forms.Form):
+class TimeRangeForm(forms.Form):
     range = forms.ChoiceField(label="Time range", choices=RANGES)
-    world = forms.ChoiceField(label="World", required=False)
     start = UTCDateTimeField(
         label="Start (UTC)",
         required=False,
@@ -56,14 +55,10 @@ class DiamondFiltersForm(forms.Form):
         ),
     )
 
-    def __init__(self, data, *, worlds):
+    def __init__(self, data, *, default_range="all"):
         data = data.copy()
-        data.setdefault("range", "all")
-        data.setdefault("world", "")
+        data.setdefault("range", default_range)
         super().__init__(data)
-        self.fields["world"].choices = [("", "All worlds")] + [
-            (str(world.id), world.name) for world in worlds
-        ]
 
     def clean(self):
         data = super().clean()
@@ -77,14 +72,30 @@ class DiamondFiltersForm(forms.Form):
             self.add_error("range", "Choose Custom range to apply start and end timestamps.")
         return data
 
-    def to_query(self, *, now):
+    def to_query(self, *, now, whole_seconds=True):
         if not self.is_valid():
             raise ValueError("Cannot query with invalid filters.")
         data = self.cleaned_data
         start = end = None
         if data["range"] in RANGE_DURATIONS:
-            end = now.astimezone(UTC).replace(microsecond=0)
+            end = now.astimezone(UTC)
+            if whole_seconds:
+                end = end.replace(microsecond=0)
             start = end - RANGE_DURATIONS[data["range"]]
         elif data["range"] == "custom":
             start, end = data["start"], data["end"]
-        return DiamondQuery(start, end, int(data["world"]) if data["world"] else None)
+        return DiamondQuery(start, end, int(data["world"]) if data.get("world") else None)
+
+
+class DiamondFiltersForm(TimeRangeForm):
+    """Legacy internal query form; public ore pages use configured worlds."""
+
+    world = forms.ChoiceField(label="World", required=False)
+
+    def __init__(self, data, *, worlds):
+        data = data.copy()
+        data.setdefault("world", "")
+        super().__init__(data)
+        self.fields["world"].choices = [("", "All worlds")] + [
+            (str(world.id), world.name) for world in worlds
+        ]

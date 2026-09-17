@@ -4,6 +4,8 @@ from urllib.parse import urlsplit
 
 from django.core.exceptions import ImproperlyConfigured
 
+from accounts.configuration import parse_access_override_ids
+
 BASE_DIR = Path(__file__).resolve().parent.parent.parent
 
 
@@ -38,6 +40,7 @@ INSTALLED_APPS = [
     "documentation",
     "coreprotect",
     "analytics",
+    "auditlog",
 ]
 MIDDLEWARE = [
     "django.middleware.security.SecurityMiddleware",
@@ -117,6 +120,9 @@ DISCORD_GUILD_ID = os.environ.get("DISCORD_GUILD_ID", "")
 DISCORD_ADMIN_ROLE_ID = os.environ.get("DISCORD_ADMIN_ROLE_ID", "")
 DISCORD_OVERLORD_ROLE_ID = os.environ.get("DISCORD_OVERLORD_ROLE_ID", "")
 DISCORD_PATRON_ROLE_ID = os.environ.get("DISCORD_PATRON_ROLE_ID", "")
+DISCORD_ACCESS_OVERRIDE_USER_IDS = parse_access_override_ids(
+    os.environ.get("DISCORD_ACCESS_OVERRIDE_USER_IDS", "")
+)
 DISCORD_REDIRECT_URI = os.environ.get("DISCORD_REDIRECT_URI", "")
 DISCORD_ROLE_CACHE_SECONDS = int(os.environ.get("DISCORD_ROLE_CACHE_SECONDS", "45"))
 if not 30 <= DISCORD_ROLE_CACHE_SECONDS <= 60:
@@ -146,3 +152,7 @@ LOGGING = {
         "httpcore": {"level": "WARNING"},
     },
 }
+
+# Audit retention and explicit trusted peer addresses (no implicit private-network trust).
+AUDIT_LOG_RETENTION_DAYS = int(os.environ.get("AUDIT_LOG_RETENTION_DAYS", "365"))
+AUDIT_TRUSTED_PROXY_IPS = env_list("AUDIT_TRUSTED_PROXY_IPS")

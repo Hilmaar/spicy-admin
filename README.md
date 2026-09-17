@@ -6,7 +6,8 @@ documentation placeholders, and read-only CoreProtect diagnostics. Phase 2A adds
 diamond mining counts with time/world filters. Phase 2B adds stone/deepslate mining ratios
 and a themed date-range picker. Phase 2B.1 adds PostgreSQL daily denominator rollups
 and separate normal/deepslate tables. Phase 2B.2 adds an ore overview, sortable tables,
-independent sample thresholds, Ancient Debris, and Emerald. Further ores, live activity,
+independent sample thresholds, Ancient Debris, and Emerald. Phase 2B.3 adds an Admin audit log,
+simplifies mining reports, and supports owner-configured Discord user-ID staff overrides. Further ores, live activity,
 player investigations, punishments, and integrations remain future scope.
 
 ## Architecture
@@ -21,7 +22,7 @@ Browser → host Nginx / HTTPS → 127.0.0.1:8086 → web (Django + Gunicorn)
 - Python 3.12, Django 5.2 LTS, server-rendered templates, small vanilla JavaScript,
   handwritten CSS, and WhiteNoise static delivery. No frontend build or API tier is needed.
   Django 5.2 is an [LTS release](https://www.djangoproject.com/weblog/2025/apr/02/django-52-released/).
-- PostgreSQL 16 stores users, sessions, daily mining rollups, and shared authorization state. Role results expire
+- PostgreSQL 16 stores users, sessions, daily mining rollups, audit events, and shared authorization state. Role results expire
   after 45 seconds by default, including across Gunicorn workers. Revocation takes effect
   on the next protected request after expiry; already-rendered content is not remotely erased.
 - Discord OAuth uses `identify`; a bot credential fetches individual guild membership for
@@ -39,7 +40,8 @@ config/                      Django settings, URLs, WSGI
 portal/                      Dashboard, security headers, DB readiness command
 documentation/               Safe Markdown rendering and tests
 coreprotect/                 Read-only adapter, diagnostics, mocked tests
-analytics/                   Diamond filters, short-lived result cache, protected page
+analytics/                   Ore reports, daily rollups, validated filters, short-lived cache
+auditlog/                    Central audit service, Admin history, retention command
 content/{conduct,commands,pterodactyl}/
 templates/                   Layouts, reusable components, portal pages
 static/                      CSS, theme/menu scripts, SVG icons
@@ -132,7 +134,8 @@ one-time session-bound state with a 10-minute lifetime. Login and logout use CSR
 POSTs. Callback redirects always return to the dashboard. User tokens are never persisted.
 Profile ID, username, display name, avatar hash, and last successful login are stored.
 Sessions expire after 12 hours; role checks happen independently. API failures/rate limits
-deny protected requests with a clear 503 until retry is allowed.
+deny ordinary role-based requests with a clear 503 until retry is allowed. The explicit
+user-ID staff override described below is independent of guild availability.
 
 ## Environment reference
 
@@ -156,6 +159,9 @@ only. Compose reads `.env`; protect its file permissions on the host.
 | `DISCORD_CLIENT_ID` | Required Discord application ID |
 | `DISCORD_CLIENT_SECRET` | Required OAuth client secret |
 | `DISCORD_BOT_TOKEN` | Required bot credential for current member-role reads |
+| `DISCORD_ACCESS_OVERRIDE_USER_IDS` | Optional comma-separated exact Discord user IDs; staff-only override, empty by default; invalid values fail startup |
+| `AUDIT_LOG_RETENTION_DAYS` | Audit retention, default `365`; pruning is a manual/scheduled management command |
+| `AUDIT_TRUSTED_PROXY_IPS` | Optional exact trusted socket peers for single-IP XFF; empty defaults to REMOTE_ADDR |
 | `DISCORD_GUILD_ID` | Required guild/server ID |
 | `DISCORD_ADMIN_ROLE_ID` | Required role ID granting portal and diagnostics access |
 | `DISCORD_OVERLORD_ROLE_ID` | Required Minecraft Overlord role ID granting normal portal access |
@@ -303,7 +309,7 @@ later work require a new scope request.
 ## Mining analytics (Phase 2B.1)
 
 Open **Ore Statistics / Diamonds** at `/ore-statistics/diamonds/`. Access still requires
-`minecraft.analytics`. **All time / All worlds remains the default and primary view.**
+`minecraft.analytics`. **All time remains the default and primary view.** Phase 2B.3 restricts each ore to its configured logical world.
 Natural diamond counts retain the strict historical player-placement exclusion in CoreProtect.
 Stone/deepslate counts intentionally include previously placed blocks when their breaks qualify.
 
@@ -323,7 +329,7 @@ inclusive-start/exclusive-end semantics, keyboard/touch controls, Cancel behavio
 non-JavaScript fallback. Both tables have independent sticky headers and support both themes.
 
 **This phase adds a portal PostgreSQL migration and requires an initial sync.** Until it
-finishes, ratios are unavailable. Freshness is displayed, with a warning after 15 minutes
+finishes, ratios are unavailable. A concise freshness warning appears after 15 minutes
 or a failed sync; data older than 24 hours becomes unavailable. Successful complete reports
 retain their 45-second per-process cache, keyed additionally by sync generation.
 
@@ -358,3 +364,26 @@ No rebuild or deployment is run automatically by this change.
 See [ore configuration, sorting, assets, and upgrade instructions](docs/ore-statistics.md)
 and [Phase 2B.2 verification](docs/phase-2b2-verification.md). CoreProtect remains read-only;
 All Time still makes no live denominator scan. No infrastructure or timeout changes apply.
+
+## Audit log and mining cleanup (Phase 2B.3)
+
+Admin users have **Audit Log** at `/audit-log/`, with shared UTC date/clock filters, actor/type/
+result filtering, 50/100-row server pagination, and protected event details. Authentication,
+meaningful page views, applied mining filters, threshold changes, and logout are recorded.
+Minecraft Overlord and ID-override users cannot read audit history or configure the portal.
+
+Set `DISCORD_ACCESS_OVERRIDE_USER_IDS` only in owner-controlled environment configuration
+to grant specific OAuth-authenticated Discord identities ordinary staff permissions without
+guild membership. Leave empty to retain role-only access. Removal applies at the next check
+after the new configuration is loaded by all workers. No list is exposed through the UI.
+
+Mining pages retain All time by default; Diamonds/Emerald resolve `world`, and Ancient Debris
+resolves `world_nether` dynamically. The World selector, large report status panel, redundant
+helper copy and footer are removed. Readiness/stale safeguards remain; scroll fades and
+more visible scrollbars indicate table overflow in both themes.
+
+This phase adds **one portal PostgreSQL migration** (`auditlog.0001_initial`). It does not
+require a Phase 2B.2 rollup rebuild. Audit retention defaults to 365 days; recommend a daily
+`prune_audit_logs` command through existing scheduling, without installing a scheduler.
+See [audit schema, permissions, overrides, IP trust, and operations](docs/audit-log.md) and
+[Phase 2B.3 verification](docs/phase-2b3-verification.md).

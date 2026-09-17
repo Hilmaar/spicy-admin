@@ -10,6 +10,7 @@ from .models import GuildAuthorization, User
 
 PORTAL_ACCESS = "portal.access"
 PORTAL_CONFIGURE = "portal.configure"
+PORTAL_AUDIT_LOG = "portal.audit_log"
 MINECRAFT_PERMISSIONS = {PORTAL_ACCESS, "minecraft.analytics", "minecraft.punishments"}
 
 
@@ -19,7 +20,7 @@ def permissions_for_roles(roles, is_member=True):
     roles = set(roles)
     permissions = set()
     if settings.DISCORD_ADMIN_ROLE_ID and settings.DISCORD_ADMIN_ROLE_ID in roles:
-        permissions.update(MINECRAFT_PERMISSIONS | {PORTAL_CONFIGURE})
+        permissions.update(MINECRAFT_PERMISSIONS | {PORTAL_CONFIGURE, PORTAL_AUDIT_LOG})
     if settings.DISCORD_OVERLORD_ROLE_ID and settings.DISCORD_OVERLORD_ROLE_ID in roles:
         permissions.update(MINECRAFT_PERMISSIONS)
     # Patron and guild membership deliberately grant no Phase 1 permissions.
@@ -34,6 +35,9 @@ def _fresh(state):
 
 
 def authorization_for(user):
+    if not user.is_authenticated or not user.is_active:
+        return frozenset()
+    override = user.discord_id in settings.DISCORD_ACCESS_OVERRIDE_USER_IDS
     state = GuildAuthorization.objects.filter(user=user).first()
     if not _fresh(state):
         # Serialize refreshes for a user across workers. Check again after taking the lock.
@@ -60,9 +64,21 @@ def authorization_for(user):
                         "guild_id": settings.DISCORD_GUILD_ID,
                     },
                 )
-    if state.unavailable:
+    if state.unavailable and not override:
         raise DiscordUnavailable("Discord could not verify access. Please try again shortly.")
-    return permissions_for_roles(state.roles, state.is_member)
+    role_permissions = (
+        permissions_for_roles(state.roles, state.is_member)
+        if not state.unavailable
+        else frozenset()
+    )
+    user._portal_authorization_source = (
+        "discord_role"
+        if PORTAL_ACCESS in role_permissions
+        else "user_override"
+        if override
+        else None
+    )
+    return role_permissions | (MINECRAFT_PERMISSIONS if override else frozenset())
 
 
 def permission_required(permission):

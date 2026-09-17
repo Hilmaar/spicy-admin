@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import datetime
 from fractions import Fraction
 
@@ -17,7 +17,7 @@ from coreprotect.mining import (
     MaterialBreakRow,
     ratio,
 )
-from coreprotect.repository import get_repository
+from coreprotect.repository import CoreProtectUnavailable, get_repository
 
 from . import rollups
 
@@ -96,9 +96,11 @@ def list_worlds():
     return worlds
 
 
-def get_report(form, group=DIAMONDS):
+def get_report(form, group=DIAMONDS, *, world_id=None):
     now = timezone.now()
     query = form.to_query(now=now)
+    if world_id is not None:
+        query = replace(query, world_id=world_id)
     snapshot = rollups.read_snapshot(query, now, group)
     range_name = form.cleaned_data["range"]
     # Relative ranges use their selection, not a constantly changing `now`, as the key.
@@ -113,7 +115,7 @@ def get_report(form, group=DIAMONDS):
         "sync_generation": snapshot.generation,
     }
     digest = hashlib.sha256(json.dumps(identity, sort_keys=True).encode()).hexdigest()
-    key = f"mining:v5:report:{digest}"
+    key = f"mining:v6:report:{digest}"
     report = _get_cached(key)
     if report is None:
         repository = get_repository()
@@ -237,11 +239,22 @@ class OverviewMetric:
     checked_at: datetime
 
 
+def configured_world(page):
+    matches = [world for world in list_worlds() if world.name == page.logical_world]
+    if len(matches) != 1:
+        raise CoreProtectUnavailable("Configured ore world is unavailable.")
+    return matches[0]
+
+
 def overview_metric(group):
-    key = f"mining:v1:overview:{group.slug}:all"
+    from .ore_config import PAGE_BY_SLUG
+
+    page = PAGE_BY_SLUG[group.slug]
+    world = configured_world(page)
+    key = f"mining:v2:overview:{group.slug}:{world.id}:all"
     metric = _get_cached(key)
     if metric is None:
-        targets = read_targets(get_repository(), DiamondQuery(), group)
+        targets = read_targets(get_repository(), DiamondQuery(world_id=world.id), group)
         merged = merge_ore_rows(targets, (), 0)
         metric = OverviewMetric(sum(sum(r.targets) for r in merged), len(merged), timezone.now())
         _set_cached(key, metric)

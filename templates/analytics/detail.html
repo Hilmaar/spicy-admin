@@ -20,37 +20,8 @@
         <h2>Filter mining activity</h2>
         <a class="text-link" href="{{ ore_page.url }}">Reset filters</a>
       </div>
-      <p id="range-help" class="small text-muted">All timestamps are UTC. Quick presets apply directly; choose a custom range for calendar selection. Exact bounds use inclusive start and exclusive end.</p>
-      {% if form.errors %}
-        <div class="notice filter-error"
-             role="alert">Please correct the filters below. No analytics query was run.</div>
-      {% endif %}
-      {{ form.non_field_errors }}
-      <div class="filter-fields">
-        {% for field in form %}
-          <div class="filter-field {% if field.name == 'start' or field.name == 'end' %}exact-fallback{% endif %}">
-            <label for="{{ field.id_for_label }}">{{ field.label }}</label>
-            {{ field }}
-            {{ field.errors }}
-          </div>
-        {% endfor %}
-      </div>
-      <div class="range-picker-control" hidden>
-        <button type="button"
-                class="button secondary"
-                data-range-open
-                aria-haspopup="dialog"
-                aria-controls="mining-range-dialog">Choose custom range</button>
-        <p class="small text-muted" data-range-summary></p>
-      </div>
-      <noscript>
-        <p class="small text-muted">For a custom range, enter UTC timestamps above. To include September 10-12 in full, use September 10 00:00 through September 13 00:00 (exclusive).</p>
-      </noscript>
-      <div class="filter-actions">
-        <button class="button primary"
-                type="submit">Apply filters {% include "components/icon.html" with name="arrow" %}</button>
-        <span class="small text-muted">Breaks are filtered by their event time.</span>
-      </div>
+      {% include "analytics/filter_fields.html" %}
+      <input type="hidden" name="thresholds" data-current-thresholds>
     </form>
     {% include "analytics/range_picker.html" %}
   {% endif %}
@@ -67,45 +38,19 @@
       <a class="button secondary" href="{{ request.get_full_path }}">Try again</a>
     </section>
   {% elif report %}
-    <section class="card table-card">
-      <div class="analytics-context">
-        <div>
-          <h2>{{ range_label }} · {{ world_label }}</h2>
-          <p class="small text-muted">
-            {% if report.query.start %}
-              {{ report.query.start|date:"Y-m-d H:i:s" }} ≤ break time &lt; {{ report.query.end|date:"Y-m-d H:i:s" }} UTC
-            {% else %}
-              All available CoreProtect history
-            {% endif %}
-          </p>
-        </div>
-        <p class="small text-muted">
-          Queried {{ report.checked_at|date:"Y-m-d H:i:s" }} UTC
-          <br>
-          Results may be cached for up to 45 seconds.
-        </p>
-      </div>
-      <div class="analytics-freshness" role="status">
-        <p>Base-block analytics updated {{ report.base_updated_at|date:"Y-m-d H:i:s" }} UTC.</p>
-        {% if report.base_reconciled_at %}<p class="small text-muted">Recent rollback reconciliation: {{ report.base_reconciled_at|date:"Y-m-d H:i:s" }} UTC.</p>{% endif %}
-        {% if report.base_warning %}<p class="notice">Base-block analytics may be stale. The last sync is delayed or failed; ratios may not reflect recent mining or rollbacks.</p>{% endif %}
-        <p class="small text-muted">Natural target ores are queried from CoreProtect. Complete base-block days use the latest rollup; precise boundary windows are queried directly.</p>
-      </div>
-    </section>
+    {% if report.base_warning %}<p class="notice" role="status">Base-block analytics may be stale. Recent mining or rollbacks may not be reflected.</p>{% endif %}
     {% for table in tables %}
       {% include "analytics/layer_table.html" with rows=table.rows config=table.config %}
     {% endfor %}
     {% if not report.rows %}<p class="notice">No natural {{ ore_page.singular }} mining events matched this range.</p>{% endif %}
   {% endif %}
-  <div class="notice analytics-note">
-    Base blocks count all qualifying player breaks, including previously player-placed blocks by design.
-    Each table's minimum sample marks smaller samples and ranks them last without hiding rows or changing values.
-    A dash means the divisor is zero. Scroll within each table to keep column labels visible.
-    Target counts exclude rolled-back events and ore previously placed by a player at the same location.
-    Each count represents an ore block broken, not item drops. High counts or ratios alone do not establish cheating.
-  </div>
+  <div id="mining-audit-config"
+       data-url="{% url 'auditlog:client-event' %}"
+       data-token="{{ csrf_token }}"
+       hidden></div>
 {% endblock %}
 {% block scripts %}
+  <script src="{% static 'js/table-scroll.js' %}" defer></script>
   <script src="{% static 'js/mining-table.js' %}" defer></script>
   <script src="{% static 'js/mining-clock.js' %}" defer></script>
   <script src="{% static 'js/mining-range.js' %}" defer></script>

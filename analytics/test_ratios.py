@@ -127,7 +127,7 @@ class RatioPageTests(TestCase):
         factory = patch("analytics.services.get_repository")
         self.repo = factory.start().return_value
         self.addCleanup(factory.stop)
-        self.repo.list_worlds.return_value = (World(87, "fixture"),)
+        self.repo.list_worlds.return_value = (World(87, "world"),)
         self.repo.get_diamond_stats.return_value = (DiamondStatsRow("a" * 32, "Alice", 1, 0),)
         MiningMaterialDaily.objects.create(
             date="2026-09-01",
@@ -181,7 +181,7 @@ class RatioPageTests(TestCase):
         MiningAnalyticsSyncState.objects.update(initialized=True, last_error="Safe error")
         response = self.client.get("/ore-statistics/diamonds/")
         self.assertContains(response, "Base-block analytics may be stale")
-        self.assertContains(response, "Recent rollback reconciliation:")
+        self.assertNotContains(response, "Recent rollback reconciliation:")
 
     def test_denominator_only_results_show_empty_natural_mining_state(self):
         self.repo.get_diamond_stats.return_value = ()
@@ -189,7 +189,7 @@ class RatioPageTests(TestCase):
         self.assertNotContains(response, "Alice")
         self.assertContains(response, "No natural diamond mining events matched this range.")
         self.assertEqual(response.context["report"].query.start, None)
-        self.assertEqual(response.context["range_label"], "All time")
+        self.assertEqual(response.context["form"].cleaned_data["range"], "all")
 
     def test_denominator_only_player_hidden_alongside_qualifying_player(self):
         self.repo.get_denominator_stats.return_value += (
@@ -243,7 +243,6 @@ class RatioPageTests(TestCase):
         for data in (
             {"range": "custom", "start": "2026-02-30", "end": "2026-03-01"},
             {"range": "custom", "start": "2026-09-12", "end": "2026-09-10"},
-            {"world": "999"},
         ):
             self.assertEqual(self.client.get("/ore-statistics/diamonds/", data).status_code, 400)
         self.repo.get_denominator_stats.assert_not_called()
